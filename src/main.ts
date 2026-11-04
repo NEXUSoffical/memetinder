@@ -1,5 +1,6 @@
 import { MemeCoin, FilterChain } from './types';
 import { DexService } from './dexService';
+import { OFFICIAL_MEMETINDER_CA, OFFICIAL_MEMETINDER_COIN } from './coinsData';
 import { SwipeEngine } from './swipeEngine';
 import { SoundEngine } from './soundEngine';
 import { PortfolioService } from './portfolioService';
@@ -1165,6 +1166,26 @@ function bindActions() {
     applyFilter('all');
     refreshTrendingFeed();
   });
+
+  // Official Token Banner ($MATCH) Handlers
+  const btnCopyOfficialCa = document.getElementById('btnCopyOfficialCa');
+  if (btnCopyOfficialCa) {
+    btnCopyOfficialCa.addEventListener('click', () => {
+      navigator.clipboard.writeText(OFFICIAL_MEMETINDER_CA);
+      btnCopyOfficialCa.innerText = '✓ CA Copied!';
+      showToast(`📋 Copied Official $MATCH CA: ${OFFICIAL_MEMETINDER_CA}`);
+      setTimeout(() => {
+        btnCopyOfficialCa.innerText = 'HEp2...pump 📋';
+      }, 2000);
+    });
+  }
+
+  const btnBuyOfficialToken = document.getElementById('btnBuyOfficialToken');
+  if (btnBuyOfficialToken) {
+    btnBuyOfficialToken.addEventListener('click', () => {
+      openProfileModal(OFFICIAL_MEMETINDER_COIN);
+    });
+  }
 
   // Sound Toggle
   btnAudioToggle.addEventListener('click', () => {

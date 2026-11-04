@@ -1,6 +1,40 @@
 import { MemeCoin } from './types';
 
+export const OFFICIAL_MEMETINDER_CA = 'HEp2GzDk2wKF9dUdU4CK5tLP3Ubc7bMP5g8c6Qsvpump';
+
+export const OFFICIAL_MEMETINDER_COIN: MemeCoin = {
+  id: 'official_memetinder_match',
+  name: 'MemeTinder',
+  symbol: 'MATCH',
+  chain: 'pumpfun',
+  priceUsd: 0.0000028,
+  change24h: 14.5,
+  marketCap: 2800,
+  volume24h: 1500,
+  liquidityUsd: 4200,
+  avatar: '/logo.jpg',
+  banner: '/banner.jpg',
+  bio: 'The official platform token of MemeTinder (memetinder.fun) — Solana’s #1 swipe-based memecoin discovery & 1-click Jupiter trading terminal. Swipe Right to 1-Click Ape!',
+  tagline: '👑 Official MemeTinder Platform Token on Pump.fun 🔥',
+  hypeScore: 100,
+  holdersCount: 150,
+  contractAddress: OFFICIAL_MEMETINDER_CA,
+  dexScreenerUrl: `https://dexscreener.com/solana/${OFFICIAL_MEMETINDER_CA}`,
+  safetyScore: {
+    isMintRevoked: true,
+    isFreezeRevoked: true,
+    isLpBurned: true,
+    top10HoldersPercent: 10.0,
+    score: 99
+  },
+  sparkline: [0.0000025, 0.0000026, 0.0000027, 0.00000275, 0.0000028],
+  traits: ['👑 Official Token', '💊 Pump.fun Live', '🔥 Featured #1'],
+  devStatus: 'Based Dev',
+  verified: true
+};
+
 export const FRESH_TRENDING_MEME_COINS: MemeCoin[] = [
+  OFFICIAL_MEMETINDER_COIN,
   {
     id: 'chillguy',
     name: 'Just a Chill Guy',

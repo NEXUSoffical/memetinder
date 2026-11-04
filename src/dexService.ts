@@ -1,5 +1,5 @@
 import { MemeCoin } from './types';
-import { FRESH_TRENDING_MEME_COINS } from './coinsData';
+import { FRESH_TRENDING_MEME_COINS, OFFICIAL_MEMETINDER_CA, OFFICIAL_MEMETINDER_COIN } from './coinsData';
 
 export class DexService {
   private static cachedCoins: MemeCoin[] = [...FRESH_TRENDING_MEME_COINS];
@@ -64,29 +64,30 @@ export class DexService {
     const shuffledLive = this.shuffleArray(liveCoins);
     const shuffledFallback = this.shuffleArray(fallbackCoins);
 
-    const boosted = this.getBoostedCoins();
-    const boostedAddrs = new Set(boosted.map(b => b.contractAddress));
+    const boosted = this.getBoostedCoins().filter(b => b.contractAddress !== OFFICIAL_MEMETINDER_CA);
+    const boostedAddrs = new Set([OFFICIAL_MEMETINDER_CA, ...boosted.map(b => b.contractAddress)]);
 
     // Combine with boosted coins first, then live trending coins prioritized, keeping unseen coins before recently swiped ones
     const combined = [...shuffledLive, ...shuffledFallback].filter(c => !boostedAddrs.has(c.contractAddress));
     const unseen = combined.filter(c => !swipedIds.has(c.id));
     const seen = combined.filter(c => swipedIds.has(c.id));
 
-    const deck = [...boosted, ...unseen, ...seen];
+    const restDeck = [...boosted, ...unseen, ...seen];
 
-    // Guarantee the first card is never the exact same coin as the previous page load
-    if (deck.length > 1 && lastFirstId && deck[0].id === lastFirstId) {
-      const swapIdx = Math.floor(Math.random() * Math.min(deck.length - 1, 8)) + 1;
-      [deck[0], deck[swapIdx]] = [deck[swapIdx], deck[0]];
+    // Guarantee the first trending card after the official token rotates across reloads
+    if (restDeck.length > 1 && lastFirstId && restDeck[0].id === lastFirstId) {
+      const swapIdx = Math.floor(Math.random() * Math.min(restDeck.length - 1, 8)) + 1;
+      [restDeck[0], restDeck[swapIdx]] = [restDeck[swapIdx], restDeck[0]];
     }
 
     try {
-      if (deck.length > 0) {
-        localStorage.setItem(this.LAST_FIRST_KEY, deck[0].id);
+      if (restDeck.length > 0) {
+        localStorage.setItem(this.LAST_FIRST_KEY, restDeck[0].id);
       }
     } catch {}
 
-    return deck;
+    // Always pin Official MemeTinder ($MATCH) token at #1 top of the deck
+    return [OFFICIAL_MEMETINDER_COIN, ...restDeck];
   }
 
   /**
@@ -106,12 +107,31 @@ export class DexService {
     this.isFetching = true;
 
     try {
-      // 1. Fetch official top boosted, latest boosted, and latest token profiles in parallel
-      const [topBoostsRes, latestBoostsRes, profilesRes] = await Promise.allSettled([
+      // 1. Fetch official top boosted, latest boosted, latest token profiles, and Official $MATCH pair in parallel
+      const [topBoostsRes, latestBoostsRes, profilesRes, officialRes] = await Promise.allSettled([
         fetch('https://api.dexscreener.com/token-boosts/top/v1'),
         fetch('https://api.dexscreener.com/token-boosts/latest/v1'),
-        fetch('https://api.dexscreener.com/token-profiles/latest/v1')
+        fetch('https://api.dexscreener.com/token-profiles/latest/v1'),
+        fetch(`https://api.dexscreener.com/latest/dex/tokens/${OFFICIAL_MEMETINDER_CA}`)
       ]);
+
+      if (officialRes.status === 'fulfilled' && officialRes.value.ok) {
+        try {
+          const offData = await officialRes.value.json();
+          const offPair = Array.isArray(offData?.pairs) && offData.pairs.length > 0 ? offData.pairs[0] : null;
+          if (offPair) {
+            const p = parseFloat(offPair.priceUsd) || OFFICIAL_MEMETINDER_COIN.priceUsd;
+            OFFICIAL_MEMETINDER_COIN.priceUsd = p;
+            OFFICIAL_MEMETINDER_COIN.marketCap = Math.round(offPair.marketCap || offPair.fdv || OFFICIAL_MEMETINDER_COIN.marketCap);
+            OFFICIAL_MEMETINDER_COIN.volume24h = Math.round(offPair.volume?.h24 || OFFICIAL_MEMETINDER_COIN.volume24h);
+            OFFICIAL_MEMETINDER_COIN.liquidityUsd = Math.round(offPair.liquidity?.usd || OFFICIAL_MEMETINDER_COIN.liquidityUsd);
+            OFFICIAL_MEMETINDER_COIN.change24h = offPair.priceChange?.h24 ?? OFFICIAL_MEMETINDER_COIN.change24h;
+            OFFICIAL_MEMETINDER_COIN.symbol = (offPair.baseToken?.symbol || 'MATCH').trim();
+            OFFICIAL_MEMETINDER_COIN.name = (offPair.baseToken?.name || 'MemeTinder').trim();
+            if (offPair.url) OFFICIAL_MEMETINDER_COIN.dexScreenerUrl = offPair.url;
+          }
+        } catch {}
+      }
 
       const tokenAddresses = new Set<string>();
       const tokenMetaMap = new Map<string, { description?: string; icon?: string; header?: string; url?: string; boosts?: number }>();
