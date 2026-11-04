@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MemeTinder - Swipe Right to Ape In 🔥</title>
+  <meta name="description" content="Tinder for trending crypto meme coins. Swipe right to Ape In, swipe left to Pass, match with viral 100x moonshots." />
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div class="ambient-glow"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand-group" id="btnBrandHome" title="Reload trending coins">
+        <span class="brand-flame">🔥</span>
+        <h1 class="brand-text">MemeTinder</h1>
+        <span class="brand-tag">BETA</span>
+      </div>
+
+      <div class="header-actions">
+        <button class="header-icon-btn" id="btnAudioToggle" title="Toggle Sound">🔊</button>
+        <button class="header-btn" id="btnOpenMatches" title="View Matched Coins & Paper Portfolio">
+          <span>💼 Bag</span>
+          <span class="badge" id="matchesCountBadge">0</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Filter Bar -->
+    <nav class="chain-filter-bar">
+      <button class="filter-chip active" data-filter="all">🌐 All Chains</button>
+      <button class="filter-chip" data-filter="solana">🟣 Solana</button>
+      <button class="filter-chip" data-filter="ethereum">🔷 Ethereum</button>
+      <button class="filter-chip" data-filter="base">🔵 Base</button>
+      <button class="filter-chip" data-filter="pumpfun">💊 Pump.fun</button>
+      <button class="filter-chip" data-filter="top_gainers">🚀 Top Gainers</button>
+    </nav>
+
+    <!-- Tinder Card Stack Container -->
+    <main class="card-stack-wrapper" id="cardStackContainer">
+      <!-- Dynamic swipe cards injected by SwipeEngine -->
+    </main>
+
+    <!-- Bottom Controls -->
+    <footer class="tinder-actions-bar">
+      <button class="action-btn btn-rewind" id="btnActionRewind" title="Rewind / Undo Last Swipe (Z)">↺</button>
+      <button class="action-btn btn-pass" id="btnActionPass" title="Pass / Rug (← Left Arrow)">❌</button>
+      <button class="action-btn btn-superlike" id="btnActionSuperlike" title="Super Like / Moonshot (↑ Up Arrow)">⭐</button>
+      <button class="action-btn btn-ape" id="btnActionApe" title="Ape In / Buy (→ Right Arrow)">🔥</button>
+      <button class="action-btn btn-boost" id="btnActionBoost" title="Boost / Turbo Feed">⚡</button>
+    </footer>
+  </div>
+
+  <!-- "IT'S A MATCH!" Modal -->
+  <div class="modal-backdrop" id="matchModalBackdrop">
+    <div class="modal-content-card">
+      <button class="modal-close-btn" id="btnCloseMatchModal">✕</button>
+      
+      <div class="match-modal-body">
+        <h2 class="match-header-text">IT'S A MATCH!</h2>
+        <p class="match-subtitle" id="matchSubtitleText">You and $PEPE are ready to send it.</p>
+
+        <div class="match-avatars-stage">
+          <img class="match-avatar degen" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80" alt="You" />
+          <span class="match-heart-badge">❤️‍🔥</span>
+          <img class="match-avatar" id="matchCoinAvatar" src="" alt="Meme Coin" />
+        </div>
+
+        <div class="match-dialogue-box" id="matchDialogueText">
+          "Whales just entered the pool. Liquidity locked. Dev promised not to dump."
+        </div>
+
+        <div class="match-actions-col">
+          <button class="btn-match-ape" id="btnSimulateBuyMatch">
+            <span>💸 Ape In $200 (Paper Bag)</span>
+          </button>
+          <a class="btn-match-chart" id="btnOpenDexChart" href="#" target="_blank" rel="noopener">
+            <span>📈 View DexScreener Live Chart ↗</span>
+          </a>
+          <button class="btn-match-keep-swiping" id="btnKeepSwiping">
+            Keep Swiping
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Token Profile & Candlestick Modal -->
+  <div class="modal-backdrop" id="profileModalBackdrop">
+    <div class="modal-content-card" style="max-width: 480px;">
+      <button class="modal-close-btn" id="btnCloseProfileModal">✕</button>
+      
+      <div id="profileModalBody">
+        <!-- Injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Matches & Portfolio Bag Modal -->
+  <div class="modal-backdrop" id="matchesModalBackdrop">
+    <div class="modal-content-card">
+      <button class="modal-close-btn" id="btnCloseMatchesModal">✕</button>
+      
+      <h2 class="matches-drawer-title">💼 My Meme Bag & Matches</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">All the coins you swiped right on.</p>
+
+      <div class="portfolio-overview-card">
+        <div class="portfolio-stat-col">
+          <span class="portfolio-stat-label">Paper Balance</span>
+          <span class="portfolio-stat-val" id="portfolioCashVal">$5,000.00</span>
+        </div>
+        <div class="portfolio-stat-col" style="text-align: right;">
+          <span class="portfolio-stat-label">Total Net Worth</span>
+          <span class="portfolio-stat-val" id="portfolioNetWorthVal">$5,000.00</span>
+        </div>
+      </div>
+
+      <div class="matches-grid" id="matchesListContainer">
+        <!-- Injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer"></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
