@@ -517,6 +517,7 @@ function initSwipeController() {
   swipeEngine = new SwipeEngine(cardStackContainer, filtered, {
     onSwipe: async (coin, direction) => {
       sound.playSwipe(direction);
+      DexService.markCoinSwiped(coin.id);
 
       if (direction === 'right') {
         const wallet = WalletService.getState();
