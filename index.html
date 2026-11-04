@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>MemeTinder - 1-Click Swap & Trending Crypto Memes</title>
-  <meta name="description" content="Tinder meets Jupiter 1-Click Swap. Connect Phantom or Demo wallet, swipe right to Ape In directly on Solana." />
+  <meta name="description" content="Tinder meets Jupiter 1-Click Swap. Connect Phantom or Solflare, swipe right to Ape In directly on Solana Mainnet." />
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,17 +23,17 @@
         <div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <h1 class="brand-text">MemeTinder</h1>
-            <span class="brand-tag">SWAP v2</span>
+            <span class="brand-tag">MAINNET</span>
           </div>
           <div class="live-feed-indicator" id="liveFeedIndicator">
             <span class="live-dot"></span>
-            <span class="live-text">Jupiter + DexScreener</span>
+            <span class="live-text">Jupiter DEX Live</span>
           </div>
         </div>
       </div>
 
       <div class="header-actions">
-        <button class="header-btn btn-wallet" id="btnWalletToggle" title="Solana Wallet Settings">
+        <button class="header-btn btn-wallet" id="btnWalletToggle" title="Connect Solana Wallet">
           <span id="walletBtnLabel">🟣 Connect Wallet</span>
         </button>
         <button class="header-icon-btn" id="btnAudioToggle" title="Toggle Sound">🔊</button>
@@ -54,7 +54,7 @@
         <button class="ape-preset-btn" data-sol="0.50">0.5 SOL</button>
       </div>
 
-      <div class="auto-ape-toggle-group" id="btnAutoApeToggle" title="When ON, swiping right immediately buys via Jupiter!">
+      <div class="auto-ape-toggle-group" id="btnAutoApeToggle" title="When ON, swiping right immediately executes a real swap via Jupiter!">
         <span id="autoApeIndicator">⚡</span>
         <span id="autoApeText">Auto-Ape: OFF</span>
       </div>
@@ -93,7 +93,7 @@
       
       <div class="match-modal-body">
         <h2 class="match-header-text">IT'S A MATCH!</h2>
-        <p class="match-subtitle" id="matchSubtitleText">Ready to send it on Solana.</p>
+        <p class="match-subtitle" id="matchSubtitleText">Ready to send it on Solana Mainnet.</p>
 
         <div class="match-avatars-stage">
           <img class="match-avatar degen" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80" alt="You" />
@@ -104,7 +104,7 @@
         <!-- Jupiter Live Swap Box -->
         <div class="jupiter-swap-card" id="jupiterSwapCard">
           <div class="jupiter-swap-header">
-            <span style="font-weight: 800; font-size: 0.85rem;">🪐 Jupiter 1-Click Route</span>
+            <span style="font-weight: 800; font-size: 0.85rem;">🪐 Jupiter Mainnet Route</span>
             <span class="jupiter-badge" id="jupRouteLabel">🪐 Raydium CPMM</span>
           </div>
 
@@ -122,7 +122,7 @@
           </div>
         </div>
 
-        <!-- Tx Confirmation Placeholder -->
+        <!-- Real Tx Confirmation Link -->
         <div id="txConfirmationArea" style="display: none; width: 100%;"></div>
 
         <div class="match-actions-col">
@@ -132,6 +132,9 @@
           <a class="btn-match-chart" id="btnOpenDexChart" href="#" target="_blank" rel="noopener">
             <span>📈 View DexScreener Live Chart ↗</span>
           </a>
+          <a class="btn-match-chart" id="btnOpenJupiterDirect" href="#" target="_blank" rel="noopener" style="background: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.3); color: #facc15;">
+            <span>🪐 Open in Jupiter Terminal ↗</span>
+          </a>
           <button class="btn-match-keep-swiping" id="btnKeepSwiping">
             Keep Swiping
           </button>
@@ -140,55 +143,67 @@
     </div>
   </div>
 
-  <!-- Wallet Connection & Settings Modal -->
+  <!-- Real Solana Wallet Connection Modal -->
   <div class="modal-backdrop" id="walletModalBackdrop">
     <div class="modal-content-card">
       <button class="modal-close-btn" id="btnCloseWalletModal">✕</button>
 
       <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; margin-bottom: 6px;">
-        Solana Wallet
+        Connect Solana Wallet
       </h2>
       <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 18px;">
-        Connect your real Solana wallet or use the Demo Degen Wallet for instant zero-risk 1-click swaps.
+        Connect your real Solana wallet to trade trending meme coins in 1 click via Jupiter.
       </p>
 
-      <!-- Active Wallet Card -->
-      <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 18px; padding: 16px; margin-bottom: 18px;">
+      <!-- Active Connected Wallet Card -->
+      <div id="activeWalletInfoCard" style="display: none; background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 18px; padding: 16px; margin-bottom: 18px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Current Wallet</span>
-          <span id="walletStatusTypeBadge" style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); color: #34d399;">DEMO DEGEN</span>
+          <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Connected Wallet</span>
+          <span id="walletStatusTypeBadge" style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); color: #34d399;">PHANTOM</span>
         </div>
-        <div style="font-family: monospace; font-size: 0.95rem; color: #f8fafc; font-weight: 700;" id="walletModalAddress">
-          DeGeN...420x
+        <div style="font-family: monospace; font-size: 0.95rem; color: #f8fafc; font-weight: 700; word-break: break-all;" id="walletModalAddress">
+          -
         </div>
         <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px;">
-          <span style="font-size: 0.8rem; color: var(--text-muted);">SOL Balance:</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Real SOL Balance:</span>
           <span style="font-family: var(--font-display); font-size: 1.4rem; font-weight: 900; color: #34d399;" id="walletModalSolBal">
-            5.000 SOL
+            0.000 SOL
           </span>
+        </div>
+        <div style="margin-top: 14px;">
+          <button id="btnDisconnectWallet" style="width: 100%; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 10px; border-radius: 12px; font-size: 0.85rem; font-weight: 800; cursor: pointer;">
+            Disconnect Wallet
+          </button>
         </div>
       </div>
 
-      <!-- Wallet Options -->
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
+      <!-- Real Wallet Options List -->
+      <div id="walletOptionsList" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
         <button id="btnConnectPhantom" style="display: flex; align-items: center; justify-content: space-between; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: white; padding: 14px 18px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
-          <span>👻 Connect Phantom Wallet</span>
-          <span style="font-size: 0.75rem; color: #d8b4fe;">Real SOL</span>
+          <span style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.3rem;">🟣</span> Phantom Wallet
+          </span>
+          <span style="font-size: 0.75rem; color: #d8b4fe;">Most Popular</span>
         </button>
 
-        <button id="btnSwitchToDemo" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-subtle); color: white; padding: 14px 18px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
-          <span>🧪 Demo Degen Wallet (5 SOL)</span>
-          <span style="font-size: 0.75rem; color: #a3e635;">Free Testing</span>
+        <button id="btnConnectSolflare" style="display: flex; align-items: center; justify-content: space-between; background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.4); color: white; padding: 14px 18px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
+          <span style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.3rem;">☀️</span> Solflare Wallet
+          </span>
+          <span style="font-size: 0.75rem; color: #fdba74;">Solana Native</span>
         </button>
-      </div>
 
-      <div style="display: flex; gap: 8px;">
-        <button id="btnFaucetDemoSol" style="flex: 1; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-subtle); color: #cbd5e1; padding: 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-          🚰 Reset to 5.0 SOL
+        <button id="btnConnectBackpack" style="display: flex; align-items: center; justify-content: space-between; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: white; padding: 14px 18px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
+          <span style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.3rem;">🎒</span> Backpack Wallet
+          </span>
+          <span style="font-size: 0.75rem; color: #fca5a5;">xNFT</span>
         </button>
-        <button id="btnDisconnectWallet" style="flex: 1; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; padding: 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-          Disconnect
-        </button>
+
+        <a id="btnOpenMobilePhantom" href="#" target="_blank" rel="noopener" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-subtle); color: #cbd5e1; padding: 12px 18px; border-radius: 16px; font-weight: 700; font-size: 0.88rem; text-decoration: none;">
+          <span>📱 Open in Phantom Mobile App</span>
+          <span>↗</span>
+        </a>
       </div>
     </div>
   </div>
@@ -209,21 +224,10 @@
     <div class="modal-content-card">
       <button class="modal-close-btn" id="btnCloseMatchesModal">✕</button>
       
-      <h2 class="matches-drawer-title">💼 My Meme Bag & Matches</h2>
-      <p style="font-size: 0.85rem; color: var(--text-muted);">All the coins you swiped right on.</p>
+      <h2 class="matches-drawer-title">💼 My Swiped Gems</h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">Meme coins you matched and swiped right on.</p>
 
-      <div class="portfolio-overview-card">
-        <div class="portfolio-stat-col">
-          <span class="portfolio-stat-label">Paper Balance</span>
-          <span class="portfolio-stat-val" id="portfolioCashVal">$5,000.00</span>
-        </div>
-        <div class="portfolio-stat-col" style="text-align: right;">
-          <span class="portfolio-stat-label">Total Net Worth</span>
-          <span class="portfolio-stat-val" id="portfolioNetWorthVal">$5,000.00</span>
-        </div>
-      </div>
-
-      <div class="matches-grid" id="matchesListContainer">
+      <div class="matches-grid" id="matchesListContainer" style="margin-top: 14px;">
         <!-- Injected dynamically -->
       </div>
     </div>

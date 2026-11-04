@@ -1,58 +1,27 @@
-export type WalletType = 'phantom' | 'demo' | 'none';
+export type WalletProviderType = 'phantom' | 'solflare' | 'backpack' | 'injected';
 
-export interface WalletState {
-  type: WalletType;
+export interface RealWalletState {
   isConnected: boolean;
+  providerType: WalletProviderType | null;
   publicKey: string | null;
   solBalance: number;
 }
 
-const STORAGE_DEMO_BALANCE = 'memetinder_demo_sol_balance';
-const STORAGE_WALLET_PREF = 'memetinder_wallet_pref';
-
 export class WalletService {
-  private static state: WalletState = {
-    type: 'none',
+  private static state: RealWalletState = {
     isConnected: false,
+    providerType: null,
     publicKey: null,
     solBalance: 0
   };
 
-  private static listeners: Array<(state: WalletState) => void> = [];
+  private static listeners: Array<(state: RealWalletState) => void> = [];
 
-  public static init() {
-    const savedPref = localStorage.getItem(STORAGE_WALLET_PREF);
-    if (savedPref === 'demo') {
-      this.connectDemo();
-    } else if (savedPref === 'phantom' && (window as any).solana?.isPhantom) {
-      // Eagerly connect if previously connected
-      (window as any).solana.connect({ onlyIfTrusted: true })
-        .then((resp: any) => {
-          this.state = {
-            type: 'phantom',
-            isConnected: true,
-            publicKey: resp.publicKey.toString(),
-            solBalance: 1.25 // Will update via balance fetch
-          };
-          this.fetchSolBalance();
-          this.notify();
-        })
-        .catch(() => {
-          // Fallback to demo mode if eager connection fails
-          this.connectDemo();
-        });
-      return;
-    } else {
-      // Default to demo wallet so user can immediately experience 1-click swaps!
-      this.connectDemo();
-    }
-  }
-
-  public static getState(): WalletState {
+  public static getState(): RealWalletState {
     return this.state;
   }
 
-  public static onStateChange(listener: (state: WalletState) => void) {
+  public static onStateChange(listener: (state: RealWalletState) => void) {
     this.listeners.push(listener);
     listener(this.state);
   }
@@ -62,127 +31,159 @@ export class WalletService {
   }
 
   /**
-   * Connect Real Phantom Wallet
+   * Auto-connects if the user previously authorized the dApp
    */
-  public static async connectPhantom(): Promise<{ success: boolean; message: string }> {
-    const solana = (window as any).solana;
-    if (!solana || !solana.isPhantom) {
+  public static async autoConnect(): Promise<void> {
+    const provider = this.getProvider('phantom') || this.getProvider('solflare') || this.getProvider('injected');
+    if (!provider) return;
+
+    try {
+      if (provider.connect) {
+        const resp = await provider.connect({ onlyIfTrusted: true });
+        if (resp?.publicKey) {
+          this.setConnectedState('phantom', resp.publicKey.toString());
+          this.refreshBalance();
+        }
+      }
+    } catch {
+      // User hasn't pre-authorized, stay disconnected
+    }
+  }
+
+  public static getProvider(type: WalletProviderType): any {
+    const w = window as any;
+    if (type === 'phantom') {
+      return w.phantom?.solana || (w.solana?.isPhantom ? w.solana : null);
+    }
+    if (type === 'solflare') {
+      return w.solflare?.isSolflare ? w.solflare : null;
+    }
+    if (type === 'backpack') {
+      return w.backpack;
+    }
+    return w.solana || null;
+  }
+
+  public static isWalletInstalled(type: WalletProviderType): boolean {
+    return !!this.getProvider(type);
+  }
+
+  /**
+   * Connect real Solana wallet
+   */
+  public static async connect(type: WalletProviderType = 'phantom'): Promise<{ success: boolean; message: string }> {
+    const provider = this.getProvider(type);
+
+    if (!provider) {
+      // Mobile deep link fallback for Phantom
+      const currentUrl = encodeURIComponent(window.location.href);
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        window.location.href = `https://phantom.app/ul/browse/${currentUrl}?ref=${encodeURIComponent(window.location.origin)}`;
+        return {
+          success: false,
+          message: 'Opening MemeTinder inside Phantom Mobile App...'
+        };
+      }
+
       return {
         success: false,
-        message: 'Phantom Wallet extension not detected! Please install Phantom or use Demo Degen Wallet.'
+        message: `${type.toUpperCase()} not found! Please install the browser extension or open in mobile app.`
       };
     }
 
     try {
-      const resp = await solana.connect();
-      const pubkey = resp.publicKey.toString();
+      const resp = await provider.connect();
+      const pubkey = resp.publicKey ? resp.publicKey.toString() : provider.publicKey?.toString();
 
-      this.state = {
-        type: 'phantom',
-        isConnected: true,
-        publicKey: pubkey,
-        solBalance: 1.5 // Initial placeholder until RPC fetch
-      };
+      if (!pubkey) {
+        return { success: false, message: 'Could not retrieve public key from wallet.' };
+      }
 
-      localStorage.setItem(STORAGE_WALLET_PREF, 'phantom');
-      this.fetchSolBalance();
-      this.notify();
+      this.setConnectedState(type, pubkey);
+      await this.refreshBalance();
+
+      // Listen for account change / disconnect
+      if (provider.on) {
+        provider.on('disconnect', () => this.disconnect());
+        provider.on('accountChanged', (newPubkey: any) => {
+          if (newPubkey) {
+            this.setConnectedState(type, newPubkey.toString());
+            this.refreshBalance();
+          } else {
+            this.disconnect();
+          }
+        });
+      }
 
       return {
         success: true,
-        message: `Connected Phantom: ${pubkey.slice(0, 4)}...${pubkey.slice(-4)}`
+        message: `Connected: ${pubkey.slice(0, 4)}...${pubkey.slice(-4)}`
       };
     } catch (err: any) {
-      return {
-        success: false,
-        message: err?.message || 'Phantom connection rejected'
-      };
+      if (err?.code === 4001) {
+        return { success: false, message: 'Wallet connection rejected by user.' };
+      }
+      return { success: false, message: err?.message || 'Connection failed.' };
     }
-  }
-
-  /**
-   * Connect Demo Degen Wallet (pre-loaded with 5.0 SOL)
-   */
-  public static connectDemo() {
-    const savedBal = localStorage.getItem(STORAGE_DEMO_BALANCE);
-    const balance = savedBal ? parseFloat(savedBal) : 5.0;
-
-    this.state = {
-      type: 'demo',
-      isConnected: true,
-      publicKey: 'DeGeN...420x (Demo)',
-      solBalance: balance
-    };
-
-    localStorage.setItem(STORAGE_WALLET_PREF, 'demo');
-    this.notify();
   }
 
   public static disconnect() {
-    if (this.state.type === 'phantom' && (window as any).solana) {
-      try { (window as any).solana.disconnect(); } catch {}
+    const provider = this.getProvider(this.state.providerType || 'phantom');
+    if (provider?.disconnect) {
+      try { provider.disconnect(); } catch {}
     }
 
     this.state = {
-      type: 'none',
       isConnected: false,
+      providerType: null,
       publicKey: null,
       solBalance: 0
     };
+    this.notify();
+  }
 
-    localStorage.removeItem(STORAGE_WALLET_PREF);
+  private static setConnectedState(type: WalletProviderType, pubkey: string) {
+    this.state = {
+      isConnected: true,
+      providerType: type,
+      publicKey: pubkey,
+      solBalance: this.state.solBalance
+    };
     this.notify();
   }
 
   /**
-   * Deducts SOL balance after successful swap
+   * Queries real on-chain balance from Solana Mainnet RPC
    */
-  public static deductSol(amount: number) {
-    if (this.state.solBalance >= amount) {
-      this.state.solBalance = Math.max(0, Math.round((this.state.solBalance - amount) * 1000) / 1000);
-      if (this.state.type === 'demo') {
-        localStorage.setItem(STORAGE_DEMO_BALANCE, this.state.solBalance.toString());
-      }
-      this.notify();
-    }
-  }
-
-  /**
-   * Adds SOL balance (e.g. faucet or reset)
-   */
-  public static resetDemoBalance(amount = 5.0) {
-    if (this.state.type === 'demo') {
-      this.state.solBalance = amount;
-      localStorage.setItem(STORAGE_DEMO_BALANCE, amount.toString());
-      this.notify();
-    }
-  }
-
-  private static async fetchSolBalance() {
-    if (this.state.type !== 'phantom' || !this.state.publicKey) return;
+  public static async refreshBalance(): Promise<number> {
+    if (!this.state.publicKey) return 0;
 
     try {
-      // Free public Solana RPC balance query
       const res = await fetch('https://api.mainnet-beta.solana.com', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jsonrpc: '2.0',
-          id: 1,
+          id: 'memetinder-bal',
           method: 'getBalance',
-          params: [this.state.publicKey]
+          params: [this.state.publicKey, { commitment: 'confirmed' }]
         })
       });
+
       if (res.ok) {
         const json = await res.json();
         if (json.result?.value !== undefined) {
           const sol = json.result.value / 1e9;
           this.state.solBalance = Math.round(sol * 1000) / 1000;
           this.notify();
+          return this.state.solBalance;
         }
       }
     } catch (e) {
-      console.info('Using local balance estimate for Phantom.');
+      console.warn('Solana RPC balance query error:', e);
     }
+    return this.state.solBalance;
   }
 }

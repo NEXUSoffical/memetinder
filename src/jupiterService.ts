@@ -1,3 +1,4 @@
+import { VersionedTransaction } from '@solana/web3.js';
 import { MemeCoin } from './types';
 import { WalletService } from './walletService';
 import { PortfolioService } from './portfolioService';
@@ -39,7 +40,7 @@ export class JupiterService {
       if (res.ok) {
         const data = await res.json();
         if (data.outAmount) {
-          const outTokens = parseFloat(data.outAmount) / 1e6; // standard 6 decimals for most meme coins
+          const outTokens = parseFloat(data.outAmount) / 1e6; // 6 decimals standard
           const route = data.routePlan?.[0]?.swapInfo?.label || 'Raydium / Meteora';
           return {
             inAmountSol: solAmount,
@@ -55,90 +56,107 @@ export class JupiterService {
       console.warn('Jupiter API quote fetch fallback:', e);
     }
 
-    // Fallback estimation using DexScreener price
     return null;
   }
 
   /**
-   * Executes 1-Click Swap through Jupiter (Real Phantom or Demo Degen Wallet)
+   * Executes a REAL 1-Click Swap on Solana Mainnet via Jupiter & Connected Wallet
    */
   public static async executeSwap(coin: MemeCoin, solAmount: number, quote?: JupiterQuote | null): Promise<SwapResult> {
     const wallet = WalletService.getState();
-    if (!wallet.isConnected) {
-      return { success: false, message: 'Please connect a wallet (Phantom or Demo) first!' };
+    if (!wallet.isConnected || !wallet.publicKey) {
+      return { 
+        success: false, 
+        message: 'Please connect your Solana wallet (Phantom or Solflare) to trade real tokens!' 
+      };
+    }
+
+    const provider = WalletService.getProvider(wallet.providerType || 'phantom');
+    if (!provider) {
+      return { success: false, message: 'Wallet provider not found in browser.' };
     }
 
     if (wallet.solBalance < solAmount) {
       return { 
         success: false, 
-        message: `Insufficient balance! You have ${wallet.solBalance} SOL, need ${solAmount} SOL.` 
+        message: `Insufficient SOL balance! You have ${wallet.solBalance.toFixed(3)} SOL, need ${solAmount} SOL.` 
       };
     }
 
-    // Determine estimated tokens received
-    const estimatedTokens = quote?.outAmountTokens || (solAmount * 95) / (coin.priceUsd || 0.001);
-
-    // 1. If Real Phantom Wallet connected and has valid rawQuote
-    if (wallet.type === 'phantom' && (window as any).solana && quote?.rawQuote) {
-      try {
-        const swapRes = await fetch('https://api.jup.ag/swap/v1/swap', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userPublicKey: wallet.publicKey,
-            quoteResponse: quote.rawQuote,
-            wrapAndUnwrapSol: true
-          })
-        });
-
-        if (swapRes.ok) {
-          const { swapTransaction } = await swapRes.json();
-          // Request signature from Phantom
-          const solana = (window as any).solana;
-          // Decode and send transaction
-          const txRes = await solana.signAndSendTransaction({
-            message: swapTransaction
-          });
-
-          const txHash = txRes.signature || txRes.publicKey || `tx_${Date.now()}`;
-          WalletService.deductSol(solAmount);
-          PortfolioService.buyPaper(coin, solAmount * 95);
-
-          return {
-            success: true,
-            message: `🎉 1-Click Ape Successful on Solana!`,
-            txHash,
-            solscanUrl: `https://solscan.io/tx/${txHash}`,
-            tokensReceived: estimatedTokens
-          };
-        }
-      } catch (err: any) {
-        if (err?.code === 4001) {
-          return { success: false, message: 'Transaction rejected in Phantom.' };
-        }
-        console.warn('Real Jupiter swap error, falling back to simulated execution:', err);
+    try {
+      // 1. Ensure we have an active Jupiter quote
+      let activeQuote = quote;
+      if (!activeQuote || !activeQuote.rawQuote) {
+        activeQuote = await this.getQuote(coin.contractAddress, solAmount, 150);
       }
+
+      if (!activeQuote || !activeQuote.rawQuote) {
+        return {
+          success: false,
+          message: 'Could not find a live liquidity route on Jupiter for this token. Try buying directly on Raydium or Pump.fun.'
+        };
+      }
+
+      // 2. Request real serialized VersionedTransaction from Jupiter API
+      const swapRes = await fetch('https://api.jup.ag/swap/v1/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPublicKey: wallet.publicKey,
+          quoteResponse: activeQuote.rawQuote,
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: 'auto'
+        })
+      });
+
+      if (!swapRes.ok) {
+        const errText = await swapRes.text();
+        return { success: false, message: `Jupiter Swap error: ${errText.slice(0, 100)}` };
+      }
+
+      const { swapTransaction } = await swapRes.json();
+      if (!swapTransaction) {
+        return { success: false, message: 'Jupiter did not return a valid swap transaction.' };
+      }
+
+      // 3. Deserialize into Solana VersionedTransaction
+      const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+      const versionedTx = VersionedTransaction.deserialize(txBytes);
+
+      // 4. Request user signature & broadcast on Solana Mainnet
+      const { signature } = await provider.signAndSendTransaction(versionedTx);
+
+      if (!signature) {
+        return { success: false, message: 'Wallet did not return a transaction signature.' };
+      }
+
+      // 5. Update wallet balance & portfolio match bag
+      WalletService.refreshBalance();
+      PortfolioService.addMatch(coin, 'ape');
+
+      return {
+        success: true,
+        message: `🎉 Swap broadcasted on Solana Mainnet!`,
+        txHash: signature,
+        solscanUrl: `https://solscan.io/tx/${signature}`,
+        tokensReceived: activeQuote.outAmountTokens
+      };
+    } catch (err: any) {
+      if (err?.code === 4001 || (err?.message && err.message.includes('User rejected'))) {
+        return { success: false, message: 'Transaction cancelled in wallet.' };
+      }
+      return {
+        success: false,
+        message: err?.message || 'Transaction failed. Check slippage or network congestion.'
+      };
     }
+  }
 
-    // 2. Demo Degen Wallet or Simulated Fast Swap
-    await new Promise(r => setTimeout(r, 650)); // realistic network latency
-    WalletService.deductSol(solAmount);
-    PortfolioService.buyPaper(coin, solAmount * 95);
-    PortfolioService.addMatch(coin, 'ape');
-
-    // Generate realistic Solana tx hash
-    const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    let mockTx = '';
-    for (let i = 0; i < 88; i++) {
-      mockTx += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-
-    return {
-      success: true,
-      message: `⚡ Successfully Aped ${solAmount} SOL into $${coin.symbol} via Jupiter!`,
-      txHash: mockTx,
-      solscanUrl: `https://solscan.io/tx/${mockTx}`,
-      tokensReceived: estimatedTokens
-    };
+  /**
+   * Direct Web Swap Link to Jupiter pre-filled with token
+   */
+  public static getJupiterDirectUrl(tokenMint: string): string {
+    return `https://jup.ag/swap/SOL-${tokenMint}`;
   }
 }
