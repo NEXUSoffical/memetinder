@@ -1688,13 +1688,20 @@ function bindActions() {
         localStorage.setItem('memetinder_player_id_v1', anonId);
       }
 
+      const customHandle = (localStorage.getItem('memetinder_custom_handle_v1') || '').trim();
+      const inputHandleEl = document.getElementById('inputLeaderboardHandle') as HTMLInputElement | null;
+      if (inputHandleEl && customHandle && !inputHandleEl.value) {
+        inputHandleEl.value = customHandle;
+      }
+
       const myId = wallet.isConnected && wallet.publicKey ? wallet.publicKey : anonId;
-      const myName = wallet.isConnected && wallet.publicKey
-        ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)} (You)`
-        : `You (Connect Wallet to Verify)`;
+      const publicLabel = customHandle
+        ? (wallet.isConnected && wallet.publicKey ? `${customHandle} (${wallet.publicKey.slice(0, 4)}..)` : customHandle)
+        : (wallet.isConnected && wallet.publicKey ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}` : `Swiper #${anonId.slice(-4).toUpperCase()}`);
+      const myName = `${publicLabel} (You)`;
 
       let realPlayers: Array<{ playerId: string; displayName: string; xp: number; badge: string }> = [
-        { playerId: myId, displayName: myName, xp: arcadeStats.xp, badge: rankInfo.shortTitle }
+        { playerId: myId, displayName: publicLabel, xp: arcadeStats.xp, badge: rankInfo.shortTitle }
       ];
 
       try {
@@ -1703,9 +1710,7 @@ function bindActions() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             playerId: myId,
-            displayName: wallet.isConnected && wallet.publicKey
-              ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}`
-              : `Swiper #${anonId.slice(-4).toUpperCase()}`,
+            displayName: publicLabel,
             xp: arcadeStats.xp,
             badge: rankInfo.shortTitle
           })
@@ -1762,6 +1767,21 @@ function bindActions() {
   if (arenaModalBackdrop) {
     arenaModalBackdrop.addEventListener('click', (e) => {
       if (e.target === arenaModalBackdrop) closeArenaModal();
+    });
+  }
+
+  const btnSaveLeaderboardHandle = document.getElementById('btnSaveLeaderboardHandle');
+  const inputLeaderboardHandle = document.getElementById('inputLeaderboardHandle') as HTMLInputElement | null;
+  if (btnSaveLeaderboardHandle && inputLeaderboardHandle) {
+    const saveHandle = () => {
+      const val = inputLeaderboardHandle.value.trim().slice(0, 22);
+      localStorage.setItem('memetinder_custom_handle_v1', val);
+      showToast(val ? `🏆 Leaderboard name set to "${val}"!` : 'Leaderboard name reset to wallet address.');
+      renderArenaStatsAndLeaderboard();
+    };
+    btnSaveLeaderboardHandle.addEventListener('click', saveHandle);
+    inputLeaderboardHandle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') saveHandle();
     });
   }
 
