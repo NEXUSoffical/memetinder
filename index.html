@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>MemeTinder - 1-Click Swap & Trending Crypto Memes</title>
   <meta name="description" content="Tinder meets Jupiter 1-Click Swap. Connect Phantom or Solflare, swipe right to Ape In directly on Solana Mainnet." />
+  <meta name="theme-color" content="#0a0b10" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.json" />
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,6 +37,7 @@
       </div>
 
       <div class="header-actions">
+        <button class="header-icon-btn" id="btnOpenSearch" title="Paste any Contract Address (CA)">🔍</button>
         <button class="header-btn btn-wallet" id="btnWalletToggle" title="Connect Solana Wallet">
           <span id="walletBtnLabel">🟣 Connect Wallet</span>
         </button>
@@ -125,6 +130,13 @@
         <!-- Real Tx Confirmation Link -->
         <div id="txConfirmationArea" style="display: none; width: 100%;"></div>
 
+        <!-- Social Viral Share & CA Strip -->
+        <div class="social-share-strip">
+          <button class="btn-share-pill" id="btnShareMatchX" title="Post Match to X (Twitter)">🐦 Share on X</button>
+          <button class="btn-share-pill" id="btnShareMatchTg" title="Forward to Telegram alpha groups">✈️ Telegram</button>
+          <button class="btn-share-pill" id="btnCopyMatchCa" title="Copy Token Contract Address">📋 Copy CA</button>
+        </div>
+
         <div class="match-actions-col">
           <button class="btn-match-ape" id="btnExecuteJupiterSwap">
             <span id="btnSwapLabel">🔥 1-Click Ape 0.1 SOL Now</span>
@@ -139,6 +151,30 @@
             Keep Swiping
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search & Import Any Solana Token Modal -->
+  <div class="modal-backdrop" id="searchModalBackdrop">
+    <div class="modal-content-card" style="max-width: 440px;">
+      <button class="modal-close-btn" id="btnCloseSearchModal">✕</button>
+      <h2 style="font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; margin-bottom: 6px;">
+        🔍 Paste Any Solana CA
+      </h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+        Paste any token address from Pump.fun, DexScreener, or Telegram to immediately swipe &amp; 1-click swap.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <input 
+          type="text" 
+          id="inputCustomCa" 
+          placeholder="e.g. 6p6xgHyF7AeQHyVaAtUoHgGn91KEUxQuStzP559Ppump" 
+          style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 14px; color: #f8fafc; font-family: monospace; font-size: 0.9rem; outline: none; width: 100%; box-sizing: border-box;"
+        />
+        <button id="btnSubmitCustomCa" style="background: linear-gradient(135deg, #f43f5e, #fb7185); border: none; border-radius: 14px; padding: 14px; color: white; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
+          ⚡ Import to Top of Deck
+        </button>
       </div>
     </div>
   </div>

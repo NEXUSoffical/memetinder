@@ -35,19 +35,21 @@ export interface MatchRecord {
   coin: MemeCoin;
   matchedAt: number;
   action: 'ape' | 'superlike';
-  simulatedHoldingUsd?: number;
-  simulatedBuyPrice?: number;
+  txSignature?: string;
+  solSpent?: number;
+  tokensBought?: number;
+  boughtAtPrice?: number;
 }
 
-export interface PortfolioState {
-  cashUsd: number;
-  holdings: Array<{
-    coinId: string;
-    symbol: string;
-    amount: number;
-    buyPriceUsd: number;
-    investedUsd: number;
-  }>;
+export interface RealHolding {
+  coinId: string;
+  symbol: string;
+  contractAddress: string;
+  tokensBought: number;
+  solSpent: number;
+  boughtAtPrice: number;
+  lastTxSignature?: string;
+  timestamp: number;
 }
 
 export type FilterChain = 'all' | 'solana' | 'pumpfun' | 'base' | 'ethereum' | 'microcaps' | 'runners';

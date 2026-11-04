@@ -75,6 +75,18 @@ const btnExecuteJupiterSwap = document.getElementById('btnExecuteJupiterSwap') a
 const btnSwapLabel = document.getElementById('btnSwapLabel') as HTMLElement;
 const txConfirmationArea = document.getElementById('txConfirmationArea') as HTMLElement;
 
+// Social Viral Share DOM
+const btnShareMatchX = document.getElementById('btnShareMatchX') as HTMLButtonElement;
+const btnShareMatchTg = document.getElementById('btnShareMatchTg') as HTMLButtonElement;
+const btnCopyMatchCa = document.getElementById('btnCopyMatchCa') as HTMLButtonElement;
+
+// Search & Custom CA DOM
+const btnOpenSearch = document.getElementById('btnOpenSearch') as HTMLButtonElement;
+const searchModalBackdrop = document.getElementById('searchModalBackdrop') as HTMLElement;
+const btnCloseSearchModal = document.getElementById('btnCloseSearchModal') as HTMLButtonElement;
+const inputCustomCa = document.getElementById('inputCustomCa') as HTMLInputElement;
+const btnSubmitCustomCa = document.getElementById('btnSubmitCustomCa') as HTMLButtonElement;
+
 // Profile Modal
 const profileModalBackdrop = document.getElementById('profileModalBackdrop') as HTMLElement;
 const btnCloseProfileModal = document.getElementById('btnCloseProfileModal') as HTMLButtonElement;
@@ -216,6 +228,12 @@ async function handleSwapExecution() {
 
   if (res.success && res.txHash) {
     sound.playBuy();
+    PortfolioService.recordRealTrade(
+      coin,
+      selectedApeSol,
+      res.txHash,
+      currentJupiterQuote?.outAmountTokens || 0
+    );
     updateMatchesBadge();
     btnSwapLabel.innerText = '✓ Swap Broadcasted!';
     
@@ -386,6 +404,11 @@ function openMatchesModal() {
   } else {
     matchesListContainer.innerHTML = matches.map(m => {
       const isPos = m.coin.change24h >= 0;
+      const jupBuyUrl = JupiterService.getJupiterDirectUrl(m.coin.contractAddress);
+      const jupSellUrl = `https://jup.ag/swap/${m.coin.contractAddress}-SOL`;
+      const tweetText = `Holding $${m.coin.symbol} from @MemeTinder 🔥\nPrice: $${m.coin.priceUsd.toFixed(6)}\nCA: ${m.coin.contractAddress}\nSwap here: ${window.location.origin}/?ca=${m.coin.contractAddress}`;
+      const twitterShareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
+
       return `
         <div class="match-item-row" data-match-id="${m.coin.id}">
           <div class="match-item-left">
@@ -394,15 +417,22 @@ function openMatchesModal() {
               <span class="match-item-name">${m.coin.name} <span style="color: var(--text-muted); font-size: 0.8rem;">$${m.coin.symbol}</span></span>
               <span class="match-item-sub">
                 ${m.action === 'superlike' ? '⭐ Super Liked' : '🔥 Matched'} · $${m.coin.priceUsd < 0.01 ? m.coin.priceUsd.toFixed(6) : m.coin.priceUsd.toFixed(2)}
+                ${m.solSpent ? ` · <b style="color: #34d399;">${m.solSpent} SOL</b>` : ''}
               </span>
             </div>
           </div>
-          <div class="match-item-right">
+          <div class="match-item-right" style="display: flex; align-items: center; gap: 6px;">
             <span style="font-weight: 800; font-size: 0.85rem; color: ${isPos ? '#34d399' : '#f87171'};">
               ${isPos ? '+' : ''}${m.coin.change24h}%
             </span>
-            <a href="${JupiterService.getJupiterDirectUrl(m.coin.contractAddress)}" target="_blank" rel="noopener" style="text-decoration: none; font-size: 0.85rem; padding: 4px 8px; background: rgba(250, 204, 21, 0.15); border: 1px solid rgba(250, 204, 21, 0.3); border-radius: 8px; color: #facc15;" title="Trade on Jupiter">
-              🪐 Swap
+            <a href="${jupBuyUrl}" target="_blank" rel="noopener" class="bag-action-btn buy" title="Buy more on Jupiter">
+              🪐 Buy
+            </a>
+            <a href="${jupSellUrl}" target="_blank" rel="noopener" class="bag-action-btn sell" title="Sell / Take Profit back to SOL on Jupiter">
+              💰 Sell
+            </a>
+            <a href="${twitterShareUrl}" target="_blank" rel="noopener" class="bag-action-btn share" title="Share bag on X (Twitter)">
+              🐦
             </a>
           </div>
         </div>
@@ -672,6 +702,87 @@ function bindActions() {
     if (e.target === matchesModalBackdrop) closeMatchesModal();
   });
 
+  // Match Viral Social Sharing
+  if (btnShareMatchX) {
+    btnShareMatchX.addEventListener('click', () => {
+      if (!currentSwipedMatchCoin) return;
+      const text = `Just matched with $${currentSwipedMatchCoin.symbol} on @MemeTinder 🔥\n\nMCap: $${currentSwipedMatchCoin.marketCap.toLocaleString()}\n24h: ${currentSwipedMatchCoin.change24h > 0 ? '+' : ''}${currentSwipedMatchCoin.change24h}%\n\nSwipe & 1-Click Swap: ${window.location.origin}/?ca=${currentSwipedMatchCoin.contractAddress}\nCA: ${currentSwipedMatchCoin.contractAddress}`;
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+    });
+  }
+
+  if (btnShareMatchTg) {
+    btnShareMatchTg.addEventListener('click', () => {
+      if (!currentSwipedMatchCoin) return;
+      const text = `🚀 Matched with $${currentSwipedMatchCoin.symbol} on MemeTinder!\nCA: ${currentSwipedMatchCoin.contractAddress}`;
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(window.location.origin + '/?ca=' + currentSwipedMatchCoin.contractAddress)}&text=${encodeURIComponent(text)}`, '_blank');
+    });
+  }
+
+  if (btnCopyMatchCa) {
+    btnCopyMatchCa.addEventListener('click', () => {
+      if (!currentSwipedMatchCoin) return;
+      navigator.clipboard.writeText(currentSwipedMatchCoin.contractAddress);
+      btnCopyMatchCa.innerText = '✓ Copied!';
+      showToast(`Copied $${currentSwipedMatchCoin.symbol} Contract Address!`);
+      setTimeout(() => { if (btnCopyMatchCa) btnCopyMatchCa.innerText = '📋 Copy CA'; }, 2000);
+    });
+  }
+
+  // Search & Import CA Modal
+  function openSearchModal() {
+    document.body.classList.add('modal-active');
+    searchModalBackdrop.classList.add('active');
+    setTimeout(() => inputCustomCa?.focus(), 100);
+  }
+
+  function closeSearchModal() {
+    document.body.classList.remove('modal-active');
+    searchModalBackdrop.classList.remove('active');
+  }
+
+  if (btnOpenSearch) btnOpenSearch.addEventListener('click', openSearchModal);
+  if (btnCloseSearchModal) btnCloseSearchModal.addEventListener('click', closeSearchModal);
+  if (searchModalBackdrop) {
+    searchModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === searchModalBackdrop) closeSearchModal();
+    });
+  }
+
+  async function handleCustomCaSubmit() {
+    const ca = inputCustomCa.value.trim();
+    if (!ca) {
+      showToast('Please enter a contract address!');
+      return;
+    }
+    btnSubmitCustomCa.disabled = true;
+    btnSubmitCustomCa.innerText = '🔍 Fetching live token data...';
+
+    const coin = await DexService.fetchTokenByAddress(ca);
+    btnSubmitCustomCa.disabled = false;
+    btnSubmitCustomCa.innerText = '⚡ Import to Top of Deck';
+
+    if (coin) {
+      allCoins = [coin, ...allCoins.filter(c => c.contractAddress !== coin.contractAddress)];
+      closeSearchModal();
+      inputCustomCa.value = '';
+      if (swipeEngine) {
+        swipeEngine.setCoins(getFilteredCoins());
+      }
+      sound.playMatch();
+      showToast(`🎉 Imported $${coin.symbol}! It is now on top of your deck.`);
+    } else {
+      showToast('Could not find pairs for this token on DexScreener. Double check address!');
+    }
+  }
+
+  if (btnSubmitCustomCa) btnSubmitCustomCa.addEventListener('click', handleCustomCaSubmit);
+  if (inputCustomCa) {
+    inputCustomCa.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleCustomCaSubmit();
+    });
+  }
+
   // Escape key closes modals
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -679,6 +790,7 @@ function bindActions() {
       closeProfileModal();
       closeMatchesModal();
       closeWalletModal();
+      closeSearchModal();
     }
   });
 }
@@ -693,6 +805,19 @@ async function boot() {
 
   // Load coins from DexService (live DexScreener top boosts + new trending)
   allCoins = await DexService.getTrendingCoins();
+
+  // Deep-link direct CA import from query param ?ca=
+  const urlParams = new URLSearchParams(window.location.search);
+  const directCa = urlParams.get('ca');
+  if (directCa) {
+    showToast(`🔍 Loading shared token ${directCa.slice(0, 6)}...`);
+    const directCoin = await DexService.fetchTokenByAddress(directCa);
+    if (directCoin) {
+      allCoins = [directCoin, ...allCoins.filter(c => c.contractAddress !== directCoin.contractAddress)];
+      showToast(`🔥 Loaded shared token $${directCoin.symbol}!`);
+    }
+  }
+
   initSwipeController();
 }
 
