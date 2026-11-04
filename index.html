@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>MemeTinder - Swipe Right to Ape In 🔥</title>
-  <meta name="description" content="Tinder for trending crypto meme coins. Swipe right to Ape In, swipe left to Pass, match with viral 100x moonshots." />
+  <title>MemeTinder - Trending Crypto Meme Coins</title>
+  <meta name="description" content="Tinder for newly trending crypto meme coins. Swipe right to Ape In, swipe left to Pass, match with viral 100x moonshots." />
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,11 +20,20 @@
     <header class="app-header">
       <div class="brand-group" id="btnBrandHome" title="Reload trending coins">
         <span class="brand-flame">🔥</span>
-        <h1 class="brand-text">MemeTinder</h1>
-        <span class="brand-tag">BETA</span>
+        <div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <h1 class="brand-text">MemeTinder</h1>
+            <span class="brand-tag">TRENDING</span>
+          </div>
+          <div class="live-feed-indicator" id="liveFeedIndicator">
+            <span class="live-dot"></span>
+            <span class="live-text">DexScreener Live</span>
+          </div>
+        </div>
       </div>
 
       <div class="header-actions">
+        <button class="header-icon-btn" id="btnRefreshFeed" title="Fetch Fresh Trending Coins">🔄</button>
         <button class="header-icon-btn" id="btnAudioToggle" title="Toggle Sound">🔊</button>
         <button class="header-btn" id="btnOpenMatches" title="View Matched Coins & Paper Portfolio">
           <span>💼 Bag</span>
@@ -35,12 +44,13 @@
 
     <!-- Filter Bar -->
     <nav class="chain-filter-bar">
-      <button class="filter-chip active" data-filter="all">🌐 All Chains</button>
-      <button class="filter-chip" data-filter="solana">🟣 Solana</button>
-      <button class="filter-chip" data-filter="ethereum">🔷 Ethereum</button>
-      <button class="filter-chip" data-filter="base">🔵 Base</button>
+      <button class="filter-chip active" data-filter="all">🔥 New Trending</button>
       <button class="filter-chip" data-filter="pumpfun">💊 Pump.fun</button>
-      <button class="filter-chip" data-filter="top_gainers">🚀 Top Gainers</button>
+      <button class="filter-chip" data-filter="solana">🟣 Solana</button>
+      <button class="filter-chip" data-filter="microcaps">💎 &lt;$5M Micro</button>
+      <button class="filter-chip" data-filter="runners">🚀 +50% Runners</button>
+      <button class="filter-chip" data-filter="base">🔵 Base</button>
+      <button class="filter-chip" data-filter="ethereum">🔷 Ethereum</button>
     </nav>
 
     <!-- Tinder Card Stack Container -->
@@ -65,7 +75,7 @@
       
       <div class="match-modal-body">
         <h2 class="match-header-text">IT'S A MATCH!</h2>
-        <p class="match-subtitle" id="matchSubtitleText">You and $PEPE are ready to send it.</p>
+        <p class="match-subtitle" id="matchSubtitleText">You and this coin are ready to send it.</p>
 
         <div class="match-avatars-stage">
           <img class="match-avatar degen" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80" alt="You" />

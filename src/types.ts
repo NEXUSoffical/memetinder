@@ -50,4 +50,4 @@ export interface PortfolioState {
   }>;
 }
 
-export type FilterChain = 'all' | 'solana' | 'ethereum' | 'base' | 'pumpfun' | 'top_gainers';
+export type FilterChain = 'all' | 'solana' | 'pumpfun' | 'base' | 'ethereum' | 'microcaps' | 'runners';

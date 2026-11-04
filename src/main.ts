@@ -18,6 +18,7 @@ const cardStackContainer = document.getElementById('cardStackContainer') as HTML
 const matchesCountBadge = document.getElementById('matchesCountBadge') as HTMLElement;
 const btnAudioToggle = document.getElementById('btnAudioToggle') as HTMLButtonElement;
 const btnBrandHome = document.getElementById('btnBrandHome') as HTMLElement;
+const btnRefreshFeed = document.getElementById('btnRefreshFeed') as HTMLButtonElement;
 
 // Filter chips
 const filterChips = document.querySelectorAll('.filter-chip');
@@ -77,11 +78,11 @@ function updateMatchesBadge() {
 
 // Funny Match Dialogue Quotes
 const MATCH_QUOTES = [
-  "You and this token both believe $1 Billion market cap is programmed.",
-  "Whales just entered the liquidity pool. Dev promised LP is burned forever.",
-  "Your green candle energy matched with this token's chart momentum!",
-  "Community takeover approved. Zero taxes, 100% degen conviction.",
-  "Elon might tweet this any second. Fasten your seatbelts!",
+  "You and this token both believe a 100x run is programmed.",
+  "Whales just entered the liquidity pool. Early momentum confirmed.",
+  "High velocity breakout volume! Dev is building and community is raiding.",
+  "Community takeover approved. Zero taxes, 100% pure degen conviction.",
+  "Trending on DexScreener top boosts! Fasten your seatbelts.",
   "Top 10 holders own less than 15%. This is as decentralized as memes get."
 ];
 
@@ -133,7 +134,7 @@ function openProfileModal(coin: MemeCoin) {
 
   profileModalBody.innerHTML = `
     <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 16px;">
-      <img src="${coin.avatar}" style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15);" alt="${coin.name}" />
+      <img src="${coin.avatar}" style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); object-fit: cover;" alt="${coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
           <h2 style="font-family: var(--font-display); font-size: 1.6rem; font-weight: 800;">${coin.name}</h2>
@@ -150,8 +151,8 @@ function openProfileModal(coin: MemeCoin) {
     <!-- Chart -->
     <div style="background: rgba(0,0,0,0.3); border-radius: 16px; padding: 12px; border: 1px solid var(--border-subtle); margin-bottom: 16px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; color: var(--text-muted);">
-        <span>Price Performance (Recent)</span>
-        <span style="color: ${changeColor}; font-weight: 700;">● Live</span>
+        <span>Price Performance (Live Momentum)</span>
+        <span style="color: ${changeColor}; font-weight: 700;">● Live DEX</span>
       </div>
       <svg viewBox="0 0 ${svgWidth} ${svgHeight}" style="width: 100%; height: 110px; overflow: visible;">
         <defs>
@@ -169,18 +170,18 @@ function openProfileModal(coin: MemeCoin) {
     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px;">
       <div class="stat-pill" style="align-items: flex-start; padding: 10px;">
         <span class="stat-label">Market Cap</span>
-        <span class="stat-val">$${coin.marketCap.toLocaleString()}</span>
+        <span class="stat-val">$${coin.marketCap > 1000000 ? (coin.marketCap / 1e6).toFixed(2) + 'M' : coin.marketCap.toLocaleString()}</span>
       </div>
       <div class="stat-pill" style="align-items: flex-start; padding: 10px;">
         <span class="stat-label">24h Volume</span>
-        <span class="stat-val">$${coin.volume24h.toLocaleString()}</span>
+        <span class="stat-val">$${coin.volume24h > 1000000 ? (coin.volume24h / 1e6).toFixed(2) + 'M' : coin.volume24h.toLocaleString()}</span>
       </div>
       <div class="stat-pill" style="align-items: flex-start; padding: 10px;">
         <span class="stat-label">Liquidity</span>
         <span class="stat-val">$${coin.liquidityUsd.toLocaleString()}</span>
       </div>
       <div class="stat-pill" style="align-items: flex-start; padding: 10px;">
-        <span class="stat-label">Holders</span>
+        <span class="stat-label">Holders / Txns</span>
         <span class="stat-val">${coin.holdersCount.toLocaleString()}</span>
       </div>
     </div>
@@ -213,7 +214,7 @@ function openProfileModal(coin: MemeCoin) {
     <!-- Action Bar -->
     <div style="display: flex; gap: 10px;">
       <a href="${coin.dexScreenerUrl}" target="_blank" rel="noopener" style="flex: 1; text-align: center; background: rgba(255,255,255,0.08); border: 1px solid var(--border-subtle); color: white; padding: 12px; border-radius: 999px; text-decoration: none; font-weight: 700; font-size: 0.9rem;">
-        📈 DexScreener
+        📈 DexScreener Live
       </a>
       <button id="btnProfileApeIn" style="flex: 1; background: var(--color-green); border: none; color: #04101e; padding: 12px; border-radius: 999px; font-weight: 800; font-size: 0.9rem; cursor: pointer;">
         🔥 Ape In ($200)
@@ -280,7 +281,7 @@ function openMatchesModal() {
       return `
         <div class="match-item-row" data-match-id="${m.coin.id}">
           <div class="match-item-left">
-            <img class="match-item-avatar" src="${m.coin.avatar}" alt="${m.coin.name}" />
+            <img class="match-item-avatar" src="${m.coin.avatar}" alt="${m.coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
             <div class="match-item-info">
               <span class="match-item-name">${m.coin.name} <span style="color: var(--text-muted); font-size: 0.8rem;">$${m.coin.symbol}</span></span>
               <span class="match-item-sub">
@@ -326,8 +327,11 @@ function closeMatchesModal() {
 // Filter Coins
 function getFilteredCoins(): MemeCoin[] {
   if (activeFilter === 'all') return allCoins;
-  if (activeFilter === 'top_gainers') {
-    return [...allCoins].sort((a, b) => b.change24h - a.change24h);
+  if (activeFilter === 'microcaps') {
+    return allCoins.filter(c => c.marketCap < 5000000);
+  }
+  if (activeFilter === 'runners') {
+    return allCoins.filter(c => c.change24h >= 50);
   }
   return allCoins.filter(c => c.chain === activeFilter);
 }
@@ -340,6 +344,14 @@ function applyFilter(filter: FilterChain) {
   if (swipeEngine) {
     swipeEngine.setCoins(getFilteredCoins());
   }
+}
+
+// Refresh Live Trending Feed
+async function refreshTrendingFeed() {
+  showToast('🔄 Fetching latest DexScreener trending boosts...');
+  allCoins = await DexService.getTrendingCoins(true);
+  applyFilter(activeFilter);
+  showToast(`⚡ Loaded ${allCoins.length} fresh trending tokens!`);
 }
 
 // Initialize Swipe Engine
@@ -371,19 +383,17 @@ function initSwipeController() {
       cardStackContainer.innerHTML = `
         <div class="empty-stack-state">
           <div class="empty-icon">🪐</div>
-          <h3 class="empty-title">You've Swiped All Memes!</h3>
-          <p class="empty-desc">You’ve seen all trending coins in this filter. Refresh to discover new breakout gems.</p>
+          <h3 class="empty-title">All Caught Up!</h3>
+          <p class="empty-desc">You’ve swiped all current trending tokens. Fetch fresh newly minted gems.</p>
           <button class="btn-reload-feed" id="btnReloadStack">
-            🔄 Reload Trending Coins
+            🔄 Refresh Live Trending Coins
           </button>
         </div>
       `;
       const btnReload = document.getElementById('btnReloadStack');
       if (btnReload) {
         btnReload.addEventListener('click', () => {
-          if (swipeEngine) {
-            swipeEngine.setCoins(getFilteredCoins());
-          }
+          refreshTrendingFeed();
         });
       }
     }
@@ -418,14 +428,18 @@ function bindActions() {
 
   btnActionBoost.addEventListener('click', () => {
     sound.playSuperLike();
-    showToast('⚡ Turbo Boost Activated! Loaded high-hype meme coins.');
-    applyFilter('top_gainers');
+    showToast('⚡ Turbo Boost Activated! Switched to +50% High-Momentum Runners.');
+    applyFilter('runners');
+  });
+
+  btnRefreshFeed.addEventListener('click', () => {
+    refreshTrendingFeed();
   });
 
   // Top Bar Brand Home Click
   btnBrandHome.addEventListener('click', () => {
     applyFilter('all');
-    showToast('🔥 Refreshed trending coins!');
+    refreshTrendingFeed();
   });
 
   // Sound Toggle
@@ -486,7 +500,7 @@ async function boot() {
   updateMatchesBadge();
   bindActions();
 
-  // Load coins from DexService (instantly returns curated, kicks off live fetch)
+  // Load coins from DexService (live DexScreener top boosts + new trending)
   allCoins = await DexService.getTrendingCoins();
   initSwipeController();
 }

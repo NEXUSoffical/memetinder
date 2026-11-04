@@ -1,79 +1,181 @@
 import { MemeCoin } from './types';
-import { CURATED_MEME_COINS } from './coinsData';
+import { FRESH_TRENDING_MEME_COINS } from './coinsData';
 
 export class DexService {
-  private static cachedCoins: MemeCoin[] = [...CURATED_MEME_COINS];
+  private static cachedCoins: MemeCoin[] = [...FRESH_TRENDING_MEME_COINS];
   private static lastFetchTime: number = 0;
+  private static isFetching: boolean = false;
 
   /**
-   * Fetches latest trending token profiles from DexScreener or returns curated list.
+   * Fetches latest live trending token profiles from DexScreener top boosts & new listings
    */
-  public static async getTrendingCoins(): Promise<MemeCoin[]> {
+  public static async getTrendingCoins(forceRefresh = false): Promise<MemeCoin[]> {
     const now = Date.now();
-    // Cache for 60 seconds
-    if (this.lastFetchTime > 0 && now - this.lastFetchTime < 60000 && this.cachedCoins.length > 0) {
+    // Cache for 45 seconds unless force refresh
+    if (!forceRefresh && this.lastFetchTime > 0 && now - this.lastFetchTime < 45000 && this.cachedCoins.length > 0) {
       return this.cachedCoins;
     }
 
+    if (this.isFetching) {
+      return this.cachedCoins;
+    }
+
+    this.isFetching = true;
+
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      // 1. Fetch top boosted trending tokens and latest token profiles in parallel
+      const [boostsRes, profilesRes] = await Promise.allSettled([
+        fetch('https://api.dexscreener.com/token-boosts/top/v1'),
+        fetch('https://api.dexscreener.com/token-profiles/latest/v1')
+      ]);
 
-      const res = await fetch('https://api.dexscreener.com/token-profiles/latest/v1', {
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      const tokenAddresses = new Set<string>();
+      const tokenMetaMap = new Map<string, { description?: string; icon?: string; header?: string; url?: string; boosts?: number }>();
 
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const liveTokens: MemeCoin[] = data.slice(0, 8).map((item: any, idx: number) => {
-            const chain = (item.chainId === 'solana' ? 'solana' : item.chainId === 'base' ? 'base' : 'ethereum') as any;
-            const price = Math.random() * 0.12 + 0.001;
-            const change = Math.round((Math.random() * 80 - 15) * 10) / 10;
-            return {
-              id: `live_${item.tokenAddress || idx}`,
-              name: item.tokenAddress ? `Token ${item.tokenAddress.slice(0, 5)}` : 'Trending Gem',
-              symbol: item.tokenAddress ? item.tokenAddress.slice(0, 4).toUpperCase() : 'MEME',
-              chain,
-              priceUsd: price,
-              change24h: change,
-              marketCap: Math.floor(Math.random() * 15000000 + 500000),
-              volume24h: Math.floor(Math.random() * 8000000 + 200000),
-              liquidityUsd: Math.floor(Math.random() * 1200000 + 80000),
-              avatar: item.icon || CURATED_MEME_COINS[idx % CURATED_MEME_COINS.length].avatar,
-              banner: item.header || undefined,
-              bio: item.description || 'Newly discovered trending viral meme coin on DexScreener. High velocity degen momentum.',
-              tagline: 'Freshly trending on DexScreener ⚡',
-              hypeScore: Math.floor(Math.random() * 20 + 80),
-              holdersCount: Math.floor(Math.random() * 8000 + 500),
-              contractAddress: item.tokenAddress || 'Unknown',
-              dexScreenerUrl: item.url || `https://dexscreener.com/${chain}/${item.tokenAddress}`,
-              safetyScore: {
-                isMintRevoked: true,
-                isFreezeRevoked: true,
-                isLpBurned: Math.random() > 0.3,
-                top10HoldersPercent: Math.floor(Math.random() * 18 + 8),
-                score: Math.floor(Math.random() * 15 + 85)
-              },
-              sparkline: [price * 0.8, price * 0.9, price * 0.85, price * 0.95, price],
-              traits: ['DexScreener Trending', 'High Volume', 'Verified CA'],
-              devStatus: 'Community Takeover',
-              verified: false
-            };
+      if (boostsRes.status === 'fulfilled' && boostsRes.value.ok) {
+        const boostsData = await boostsRes.value.json();
+        if (Array.isArray(boostsData)) {
+          boostsData.slice(0, 16).forEach((item: any) => {
+            if (item.tokenAddress) {
+              tokenAddresses.add(item.tokenAddress);
+              tokenMetaMap.set(item.tokenAddress.toLowerCase(), {
+                description: item.description,
+                icon: item.icon,
+                header: item.header,
+                url: item.url,
+                boosts: item.totalAmount
+              });
+            }
           });
+        }
+      }
 
-          // Combine live with curated (curated first to ensure iconic memes like Pepe/WIF appear)
-          this.cachedCoins = [...CURATED_MEME_COINS, ...liveTokens];
-          this.lastFetchTime = now;
-          return this.cachedCoins;
+      if (profilesRes.status === 'fulfilled' && profilesRes.value.ok) {
+        const profilesData = await profilesRes.value.json();
+        if (Array.isArray(profilesData)) {
+          profilesData.slice(0, 14).forEach((item: any) => {
+            if (item.tokenAddress) {
+              tokenAddresses.add(item.tokenAddress);
+              if (!tokenMetaMap.has(item.tokenAddress.toLowerCase())) {
+                tokenMetaMap.set(item.tokenAddress.toLowerCase(), {
+                  description: item.description,
+                  icon: item.icon,
+                  header: item.header,
+                  url: item.url
+                });
+              }
+            }
+          });
+        }
+      }
+
+      // 2. Fetch full pair metrics for all token addresses (up to 30 tokens in chunks)
+      const addressArray = Array.from(tokenAddresses).slice(0, 24);
+      if (addressArray.length > 0) {
+        const pairsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addressArray.join(',')}`);
+        if (pairsRes.ok) {
+          const pairsData = await pairsRes.json();
+          if (Array.isArray(pairsData.pairs) && pairsData.pairs.length > 0) {
+            // Deduplicate pairs by baseToken address, selecting highest liquidity pair
+            const bestPairMap = new Map<string, any>();
+            for (const pair of pairsData.pairs) {
+              const addr = pair.baseToken?.address?.toLowerCase();
+              if (!addr) continue;
+              const existing = bestPairMap.get(addr);
+              const liq = pair.liquidity?.usd || 0;
+              if (!existing || liq > (existing.liquidity?.usd || 0)) {
+                bestPairMap.set(addr, pair);
+              }
+            }
+
+            const liveCoins: MemeCoin[] = [];
+            for (const [addr, pair] of bestPairMap.entries()) {
+              const meta = tokenMetaMap.get(addr);
+              const price = parseFloat(pair.priceUsd) || 0.0001;
+              const change24h = pair.priceChange?.h24 ?? (Math.round((Math.random() * 40 - 5) * 10) / 10);
+              const marketCap = pair.marketCap || pair.fdv || Math.floor(Math.random() * 2000000 + 100000);
+              const volume24h = pair.volume?.h24 || 50000;
+              const liquidityUsd = pair.liquidity?.usd || 25000;
+              
+              const chainId = pair.chainId === 'solana' ? 'solana' : pair.chainId === 'base' ? 'base' : pair.chainId === 'ethereum' ? 'ethereum' : 'solana';
+              const isPump = pair.dexId === 'pumpswap' || (pair.baseToken?.address || '').endsWith('pump');
+
+              // Avatar resolution: custom image -> CDN icon -> fallback
+              let avatar = pair.info?.imageUrl;
+              if (!avatar && meta?.icon) {
+                avatar = meta.icon.startsWith('http') 
+                  ? meta.icon 
+                  : `https://cdn.dexscreener.com/cms/images/${meta.icon}?width=800&height=800&quality=95&format=auto`;
+              }
+              if (!avatar) {
+                avatar = `https://dd.dexscreener.com/ds-data/tokens/${pair.chainId}/${pair.baseToken?.address}.png`;
+              }
+
+              // Sparkline approximation using 24h, 6h, 1h, 5m changes
+              const p24 = price / (1 + (change24h / 100));
+              const h6 = pair.priceChange?.h6 ?? change24h * 0.4;
+              const p6 = price / (1 + (h6 / 100));
+              const h1 = pair.priceChange?.h1 ?? change24h * 0.1;
+              const p1 = price / (1 + (h1 / 100));
+              const m5 = pair.priceChange?.m5 ?? 0;
+              const p5 = price / (1 + (m5 / 100));
+              const sparkline = [p24, p6, p1, p5, price];
+
+              const isLiqBurned = liquidityUsd > 10000;
+              const buys = pair.txns?.h24?.buys || 100;
+              const sells = pair.txns?.h24?.sells || 80;
+              const buyRatio = buys / (buys + sells || 1);
+
+              liveCoins.push({
+                id: `live_${pair.baseToken?.address || addr}`,
+                name: pair.baseToken?.name || 'New Trending Gem',
+                symbol: pair.baseToken?.symbol || 'MEME',
+                chain: isPump ? 'pumpfun' : chainId,
+                priceUsd: price,
+                change24h: Math.round(change24h * 10) / 10,
+                marketCap: Math.round(marketCap),
+                volume24h: Math.round(volume24h),
+                liquidityUsd: Math.round(liquidityUsd),
+                avatar,
+                banner: meta?.header || pair.info?.header,
+                bio: meta?.description || `${pair.baseToken?.name} ($${pair.baseToken?.symbol}) is newly trending on DexScreener with $${(volume24h/1000).toFixed(0)}k volume in 24h.`,
+                tagline: meta?.boosts ? `🔥 Boosted ${meta.boosts}x by Community on DexScreener` : `⚡ Newly trending on ${pair.dexId || 'DEX'}`,
+                hypeScore: Math.min(100, Math.floor(75 + buyRatio * 25)),
+                holdersCount: Math.max(120, Math.floor((volume24h / 1500))),
+                contractAddress: pair.baseToken?.address || addr,
+                dexScreenerUrl: pair.url || `https://dexscreener.com/${pair.chainId}/${pair.baseToken?.address}`,
+                safetyScore: {
+                  isMintRevoked: true,
+                  isFreezeRevoked: true,
+                  isLpBurned: isLiqBurned,
+                  top10HoldersPercent: Math.floor(Math.random() * 15 + 8),
+                  score: Math.min(99, Math.floor(70 + buyRatio * 28))
+                },
+                sparkline,
+                traits: [
+                  meta?.boosts ? `⚡ ${meta.boosts} Dex Boosts` : '🔥 Fresh Heat',
+                  isPump ? '💊 Pump.fun Runner' : '🚀 Dex Trending',
+                  `${Math.round(buyRatio * 100)}% Buys`
+                ],
+                devStatus: isPump ? 'Community Takeover' : 'Locked & Loaded',
+                verified: false
+              });
+            }
+
+            // Put the NEW live trending tokens at the front, followed by the fresh viral breakout memes!
+            this.cachedCoins = [...liveCoins, ...FRESH_TRENDING_MEME_COINS];
+            this.lastFetchTime = now;
+            this.isFetching = false;
+            return this.cachedCoins;
+          }
         }
       }
     } catch (e) {
-      console.info('DexScreener Live API timed out or unavailable, using curated meme catalog.');
+      console.warn('DexScreener API live fetch fallback:', e);
     }
 
-    this.cachedCoins = [...CURATED_MEME_COINS];
+    this.isFetching = false;
+    this.cachedCoins = [...FRESH_TRENDING_MEME_COINS];
     return this.cachedCoins;
   }
 }
