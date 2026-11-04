@@ -127,14 +127,17 @@ function updateWalletUI(wallet: RealWalletState) {
   if (wallet.isConnected && wallet.publicKey) {
     btnWalletToggle.classList.add('connected');
     const short = `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}`;
-    walletBtnLabel.innerHTML = `🟢 <b>${wallet.solBalance.toFixed(2)} SOL</b> (${short})`;
+    const formattedBal = wallet.solBalance > 0 && wallet.solBalance < 0.1
+      ? wallet.solBalance.toFixed(3)
+      : wallet.solBalance.toFixed(2);
+    walletBtnLabel.innerHTML = `🟢 <b>${formattedBal} SOL</b> (${short})`;
     
     activeWalletInfoCard.style.display = 'block';
     walletOptionsList.style.display = 'none';
 
     walletStatusTypeBadge.innerText = (wallet.providerType || 'SOLANA').toUpperCase();
     walletModalAddress.innerText = wallet.publicKey;
-    walletModalSolBal.innerText = `${wallet.solBalance.toFixed(3)} SOL`;
+    walletModalSolBal.innerText = `${wallet.solBalance.toFixed(4)} SOL`;
 
     if (btnSwapLabel && (!currentSwipedMatchCoin || !btnExecuteJupiterSwap.disabled)) {
       btnSwapLabel.innerText = `🔥 1-Click Ape ${selectedApeSol} SOL Now`;
@@ -465,6 +468,9 @@ function closeMatchesModal() {
 
 // Wallet Modal Handlers
 function openWalletModal() {
+  if (WalletService.getState().isConnected) {
+    WalletService.refreshBalance();
+  }
   document.body.classList.add('modal-active');
   walletModalBackdrop.classList.add('active');
 }

@@ -76,10 +76,15 @@ export class JupiterService {
       return { success: false, message: 'Wallet provider not found in browser.' };
     }
 
-    if (wallet.solBalance < solAmount) {
+    if (!wallet.balanceLoaded || wallet.solBalance === 0) {
+      await WalletService.refreshBalance();
+    }
+
+    const latestWallet = WalletService.getState();
+    if (latestWallet.balanceLoaded && latestWallet.solBalance < solAmount) {
       return { 
         success: false, 
-        message: `Insufficient SOL balance! You have ${wallet.solBalance.toFixed(3)} SOL, need ${solAmount} SOL.` 
+        message: `Insufficient SOL balance! You have ${latestWallet.solBalance.toFixed(4)} SOL, need ${solAmount} SOL.` 
       };
     }
 

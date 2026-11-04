@@ -5,6 +5,7 @@ export interface RealWalletState {
   providerType: WalletProviderType | null;
   publicKey: string | null;
   solBalance: number;
+  balanceLoaded?: boolean;
 }
 
 export class WalletService {
@@ -12,7 +13,8 @@ export class WalletService {
     isConnected: false,
     providerType: null,
     publicKey: null,
-    solBalance: 0
+    solBalance: 0,
+    balanceLoaded: false
   };
 
   private static listeners: Array<(state: RealWalletState) => void> = [];
@@ -38,11 +40,17 @@ export class WalletService {
     if (!provider) return;
 
     try {
+      if (provider.isConnected && provider.publicKey) {
+        this.setConnectedState('phantom', provider.publicKey.toString());
+        await this.refreshBalance();
+        return;
+      }
       if (provider.connect) {
         const resp = await provider.connect({ onlyIfTrusted: true });
-        if (resp?.publicKey) {
-          this.setConnectedState('phantom', resp.publicKey.toString());
-          this.refreshBalance();
+        const pubkey = resp?.publicKey?.toString() || provider.publicKey?.toString();
+        if (pubkey) {
+          this.setConnectedState('phantom', pubkey);
+          await this.refreshBalance();
         }
       }
     } catch {
@@ -155,35 +163,61 @@ export class WalletService {
   }
 
   /**
-   * Queries real on-chain balance from Solana Mainnet RPC
+   * Queries real on-chain balance from CORS-friendly Solana Mainnet RPCs + serverless fallback
    */
   public static async refreshBalance(): Promise<number> {
     if (!this.state.publicKey) return 0;
+    const pubkey = this.state.publicKey;
 
+    const rpcEndpoints = [
+      'https://solana-rpc.publicnode.com',
+      'https://api.mainnet-beta.solana.com'
+    ];
+
+    for (const rpcUrl of rpcEndpoints) {
+      try {
+        const res = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'memetinder-bal',
+            method: 'getBalance',
+            params: [pubkey, { commitment: 'confirmed' }]
+          })
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (typeof json.result?.value === 'number') {
+            const sol = json.result.value / 1e9;
+            this.state.solBalance = Math.round(sol * 10000) / 10000;
+            this.state.balanceLoaded = true;
+            this.notify();
+            return this.state.solBalance;
+          }
+        }
+      } catch (e) {
+        console.warn(`Solana RPC balance query failed on ${rpcUrl}:`, e);
+      }
+    }
+
+    // Serverless proxy fallback (/api/balance) to bypass browser Origin restrictions
     try {
-      const res = await fetch('https://api.mainnet-beta.solana.com', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 'memetinder-bal',
-          method: 'getBalance',
-          params: [this.state.publicKey, { commitment: 'confirmed' }]
-        })
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        if (json.result?.value !== undefined) {
-          const sol = json.result.value / 1e9;
-          this.state.solBalance = Math.round(sol * 1000) / 1000;
+      const apiRes = await fetch(`/api/balance?pubkey=${encodeURIComponent(pubkey)}`);
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (typeof data.sol === 'number') {
+          this.state.solBalance = Math.round(data.sol * 10000) / 10000;
+          this.state.balanceLoaded = true;
           this.notify();
           return this.state.solBalance;
         }
       }
     } catch (e) {
-      console.warn('Solana RPC balance query error:', e);
+      console.warn('Serverless balance proxy fallback error:', e);
     }
+
     return this.state.solBalance;
   }
 }
