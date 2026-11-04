@@ -101,6 +101,26 @@
       </div>
     </div>
 
+    <!-- Gamified Degen XP, Streak & Mystery Spin Bar -->
+    <div id="degenArcadeBar" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(20, 10, 42, 0.68); border: 1px solid rgba(192, 132, 252, 0.32); border-radius: 12px; padding: 5px 10px; margin-bottom: 6px; backdrop-filter: blur(12px);">
+      <div id="btnOpenArenaRank" style="display: flex; align-items: center; gap: 7px; cursor: pointer; flex: 1; min-width: 0;">
+        <span id="degenRankBadge" style="font-size: 0.72rem; font-weight: 800; color: #e9d5ff; white-space: nowrap;">🌱 Lvl 1 Rookie</span>
+        <div style="flex: 1; max-width: 75px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden;">
+          <div id="degenXpFill" style="width: 15%; height: 100%; background: linear-gradient(90deg, #ff2a7a, #a855f7, #14f195); border-radius: 999px; transition: width 0.3s ease;"></div>
+        </div>
+        <span id="degenXpText" style="font-size: 0.66rem; font-family: monospace; color: #cbd5e1; font-weight: 700;">0 XP</span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+        <span id="degenStreakPill" title="Current Swipe Streak" style="font-size: 0.7rem; font-weight: 800; background: rgba(251, 146, 60, 0.18); border: 1px solid rgba(251, 146, 60, 0.4); color: #fdba74; padding: 2px 7px; border-radius: 999px;">
+          🔥 0x
+        </span>
+        <button id="btnOpenMysterySpin" title="Open Degen Arena, Leaderboard & Mystery Gem Roulette!" style="background: linear-gradient(135deg, #a855f7, #ec4899); border: none; color: white; font-size: 0.7rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; cursor: pointer; box-shadow: 0 2px 10px rgba(168, 85, 247, 0.45); display: flex; align-items: center; gap: 4px;">
+          <span>🎰 Spin &amp; Rank</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Filter Bar -->
     <nav class="chain-filter-bar">
       <button class="filter-chip active" data-filter="all">🔥 New Trending</button>
@@ -383,6 +403,81 @@
       </div>
     </div>
   </div>
+
+  <!-- Gamified Degen Arena, Mystery Gem Roulette & Leaderboard Modal -->
+  <div class="modal-backdrop" id="arenaModalBackdrop">
+    <div class="modal-content-card" style="max-width: 480px;">
+      <button class="modal-close-btn" id="btnCloseArenaModal">✕</button>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; padding-right: 28px;">
+        <h2 class="matches-drawer-title" style="margin-bottom: 0;">🎰 Degen Arena &amp; Roulette</h2>
+        <span id="arenaMultiplierBadge" style="font-size: 0.72rem; font-weight: 900; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399; padding: 2px 8px; border-radius: 999px;">⚡ 1x XP</span>
+      </div>
+      <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 12px;">
+        Swipe coins to earn XP, dodge rugs, spin the Mystery Moonshot Wheel, and climb the Solana Trench Leaderboard!
+      </p>
+
+      <!-- Player Rank & Stats Card -->
+      <div style="background: linear-gradient(145deg, rgba(168, 85, 247, 0.18), rgba(253, 41, 123, 0.14)); border: 1px solid rgba(216, 180, 254, 0.3); border-radius: 16px; padding: 12px 14px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div>
+            <div style="font-size: 0.68rem; color: #cbd5e1; text-transform: uppercase; font-weight: 800;">Your Trench Rank</div>
+            <div id="arenaRankTitle" style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 900; color: #fde68a;">🌱 Lvl 1 Trench Rookie</div>
+          </div>
+          <button id="btnShareArenaX" style="background: rgba(29, 155, 240, 0.22); border: 1px solid rgba(29, 155, 240, 0.5); color: #7dd3fc; font-size: 0.72rem; font-weight: 800; padding: 6px 11px; border-radius: 999px; cursor: pointer;">
+            🐦 Flex Rank on X
+          </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center;">
+          <div style="background: rgba(0,0,0,0.35); border-radius: 10px; padding: 6px 4px;">
+            <div style="font-size: 0.62rem; color: var(--text-subtle); font-weight: 700;">TOTAL XP</div>
+            <div id="arenaStatXp" style="font-size: 0.9rem; font-weight: 900; color: #f8fafc; font-family: monospace;">0</div>
+          </div>
+          <div style="background: rgba(0,0,0,0.35); border-radius: 10px; padding: 6px 4px;">
+            <div style="font-size: 0.62rem; color: var(--text-subtle); font-weight: 700;">BEST STREAK</div>
+            <div id="arenaStatStreak" style="font-size: 0.9rem; font-weight: 900; color: #fb923c; font-family: monospace;">🔥 0</div>
+          </div>
+          <div style="background: rgba(0,0,0,0.35); border-radius: 10px; padding: 6px 4px;">
+            <div style="font-size: 0.62rem; color: var(--text-subtle); font-weight: 700;">RUGS DODGED</div>
+            <div id="arenaStatRugs" style="font-size: 0.9rem; font-weight: 900; color: #f87171; font-family: monospace;">💀 0</div>
+          </div>
+          <div style="background: rgba(0,0,0,0.35); border-radius: 10px; padding: 6px 4px;">
+            <div style="font-size: 0.62rem; color: var(--text-subtle); font-weight: 700;">WIN RATE</div>
+            <div id="arenaStatWinrate" style="font-size: 0.9rem; font-weight: 900; color: #34d399; font-family: monospace;">100%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mystery Moonshot Roulette Box -->
+      <div style="background: rgba(0, 0, 0, 0.42); border: 1.5px solid rgba(251, 191, 36, 0.4); border-radius: 16px; padding: 14px; margin-bottom: 12px; text-align: center;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #fde68a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+          🎰 Mystery Trench Roulette (Spin for a Random Gem + Bonus XP)
+        </div>
+        <div id="rouletteDisplayBox" style="min-height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.18); border-radius: 12px; padding: 10px; margin-bottom: 10px;">
+          <span style="font-size: 1.6rem;">🎲</span>
+          <span style="font-size: 0.8rem; color: #cbd5e1; font-weight: 700; margin-top: 2px;">Feeling lucky? Spin the wheel to roll a random trending moonshot!</span>
+        </div>
+        <button id="btnTriggerRouletteSpin" style="width: 100%; background: linear-gradient(135deg, #f59e0b, #ec4899, #8b5cf6); border: none; color: white; font-family: var(--font-display); font-size: 0.95rem; font-weight: 900; padding: 11px; border-radius: 999px; cursor: pointer; box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);">
+          🎰 SPIN MYSTERY WHEEL (+50 XP)
+        </button>
+      </div>
+
+      <!-- Live Trench Leaderboard -->
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 10px 12px;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #e2e8f0; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between;">
+          <span>🏆 Today's Top Trench Swipers</span>
+          <span style="color: #fde68a;">👑 $MATCH Rewards Pool</span>
+        </div>
+        <div id="arenaLeaderboardList" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.78rem;">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating XP & Confetti Overlay -->
+  <div id="fxOverlayContainer" style="position: fixed; inset: 0; pointer-events: none; z-index: 9999; overflow: hidden;"></div>
 
   <!-- Toast Container -->
   <div id="toastContainer"></div>

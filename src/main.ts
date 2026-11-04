@@ -1066,6 +1066,166 @@ async function refreshTrendingFeed() {
   showToast(`⚡ Loaded ${allCoins.length} fresh trending tokens!`);
 }
 
+// Gamified Degen Arcade State (XP, Streak, Rugs Dodged, Mystery Spin)
+interface DegenArcadeStats {
+  xp: number;
+  streak: number;
+  bestStreak: number;
+  rugsDodged: number;
+  totalCalls: number;
+  goodCalls: number;
+  multiplier: number;
+}
+
+const ARCADE_STORAGE_KEY = 'memetinder_degen_arcade_v1';
+
+function loadArcadeStats(): DegenArcadeStats {
+  try {
+    const raw = localStorage.getItem(ARCADE_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { xp: 50, streak: 0, bestStreak: 0, rugsDodged: 0, totalCalls: 1, goodCalls: 1, multiplier: 1 };
+}
+
+let arcadeStats: DegenArcadeStats = loadArcadeStats();
+
+function saveArcadeStats() {
+  try {
+    localStorage.setItem(ARCADE_STORAGE_KEY, JSON.stringify(arcadeStats));
+  } catch {}
+}
+
+function getDegenRankInfo(xp: number): { level: number; shortTitle: string; fullTitle: string; progressPct: number } {
+  const tiers = [
+    { min: 0, max: 200, level: 1, shortTitle: '🌱 Lvl 1 Rookie', fullTitle: '🌱 Lvl 1 Trench Rookie' },
+    { min: 200, max: 600, level: 2, shortTitle: '🐸 Lvl 2 Hunter', fullTitle: '🐸 Lvl 2 Pump Hunter' },
+    { min: 600, max: 1400, level: 3, shortTitle: '💎 Lvl 3 Diamond', fullTitle: '💎 Lvl 3 Diamond Swiper' },
+    { min: 1400, max: 3000, level: 4, shortTitle: '🦍 Lvl 4 Chad', fullTitle: '🦍 Lvl 4 Solana GigaChad' },
+    { min: 3000, max: 10000, level: 5, shortTitle: '👑 Lvl 5 Trench God', fullTitle: '👑 Lvl 5 Immortal Trench God' }
+  ];
+  const tier = tiers.find(t => xp < t.max) || tiers[tiers.length - 1];
+  const pct = Math.min(100, Math.max(8, Math.round(((xp - tier.min) / (tier.max - tier.min)) * 100)));
+  return { level: tier.level, shortTitle: tier.shortTitle, fullTitle: tier.fullTitle, progressPct: pct };
+}
+
+function spawnFloatingXp(text: string, color = '#fde68a') {
+  const overlay = document.getElementById('fxOverlayContainer');
+  if (!overlay) return;
+  const el = document.createElement('div');
+  el.innerText = text;
+  el.style.position = 'absolute';
+  el.style.left = `${45 + (Math.random() * 16 - 8)}%`;
+  el.style.top = '46%';
+  el.style.transform = 'translate(-50%, -50%) scale(0.8)';
+  el.style.fontFamily = 'var(--font-display)';
+  el.style.fontWeight = '900';
+  el.style.fontSize = '1.25rem';
+  el.style.color = color;
+  el.style.textShadow = '0 4px 16px rgba(0,0,0,0.85)';
+  el.style.transition = 'all 0.85s cubic-bezier(0.2, 0.8, 0.2, 1)';
+  el.style.opacity = '1';
+  overlay.appendChild(el);
+
+  requestAnimationFrame(() => {
+    el.style.top = '28%';
+    el.style.transform = 'translate(-50%, -50%) scale(1.15)';
+    el.style.opacity = '0';
+  });
+
+  setTimeout(() => el.remove(), 900);
+}
+
+function spawnNeonConfetti(count = 28) {
+  const overlay = document.getElementById('fxOverlayContainer');
+  if (!overlay) return;
+  const colors = ['#ff2a7a', '#a855f7', '#14f195', '#fde68a', '#38bdf8'];
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    const size = Math.floor(Math.random() * 7 + 6);
+    p.style.position = 'absolute';
+    p.style.left = `${50 + (Math.random() * 20 - 10)}%`;
+    p.style.top = '45%';
+    p.style.width = `${size}px`;
+    p.style.height = `${size}px`;
+    p.style.background = colors[i % colors.length];
+    p.style.borderRadius = i % 2 === 0 ? '50%' : '2px';
+    p.style.boxShadow = `0 0 10px ${colors[i % colors.length]}`;
+    p.style.transition = 'all 1s cubic-bezier(0.15, 0.85, 0.3, 1)';
+    overlay.appendChild(p);
+
+    const dx = (Math.random() - 0.5) * 340;
+    const dy = (Math.random() - 0.7) * 320;
+    const rot = Math.random() * 520;
+
+    requestAnimationFrame(() => {
+      p.style.transform = `translate3d(${dx}px, ${dy}px, 0) rotate(${rot}deg) scale(0.2)`;
+      p.style.opacity = '0';
+    });
+
+    setTimeout(() => p.remove(), 1050);
+  }
+}
+
+function updateArcadeUI() {
+  const rankInfo = getDegenRankInfo(arcadeStats.xp);
+  const elRankBadge = document.getElementById('degenRankBadge');
+  const elXpFill = document.getElementById('degenXpFill');
+  const elXpText = document.getElementById('degenXpText');
+  const elStreakPill = document.getElementById('degenStreakPill');
+
+  if (elRankBadge) elRankBadge.innerText = rankInfo.shortTitle;
+  if (elXpFill) elXpFill.style.width = `${rankInfo.progressPct}%`;
+  if (elXpText) elXpText.innerText = `${arcadeStats.xp} XP`;
+  if (elStreakPill) {
+    elStreakPill.innerText = `🔥 ${arcadeStats.streak}x`;
+    elStreakPill.style.transform = 'scale(1.12)';
+    setTimeout(() => { if (elStreakPill) elStreakPill.style.transform = 'scale(1)'; }, 200);
+  }
+}
+
+function recordArcadeSwipe(coin: MemeCoin, direction: 'left' | 'right' | 'up') {
+  const prevLevel = getDegenRankInfo(arcadeStats.xp).level;
+  arcadeStats.streak += 1;
+  if (arcadeStats.streak > arcadeStats.bestStreak) {
+    arcadeStats.bestStreak = arcadeStats.streak;
+  }
+
+  arcadeStats.totalCalls += 1;
+  let xpGain = 15 * arcadeStats.multiplier;
+
+  if (direction === 'left') {
+    arcadeStats.rugsDodged += 1;
+    if (coin.change24h < 10) arcadeStats.goodCalls += 1;
+    xpGain = 15 * arcadeStats.multiplier;
+    spawnFloatingXp(`+${xpGain} XP 💀 Rug Dodged!`, '#fda4af');
+  } else if (direction === 'right') {
+    if (coin.change24h >= 0) arcadeStats.goodCalls += 1;
+    xpGain = 30 * arcadeStats.multiplier;
+    spawnFloatingXp(`+${xpGain} XP 🔥 APE!`, '#6ee7b7');
+  } else if (direction === 'up') {
+    arcadeStats.goodCalls += 1;
+    xpGain = 60 * arcadeStats.multiplier;
+    spawnFloatingXp(`+${xpGain} XP ⭐ SUPER LIKE!`, '#fde68a');
+    spawnNeonConfetti(22);
+  }
+
+  arcadeStats.xp += xpGain;
+  const newRank = getDegenRankInfo(arcadeStats.xp);
+
+  if (newRank.level > prevLevel) {
+    spawnNeonConfetti(40);
+    showToast(`🎉 LEVEL UP! You are now ${newRank.fullTitle}!`, 4000);
+  } else if (arcadeStats.streak > 0 && arcadeStats.streak % 5 === 0) {
+    const bonus = 50 * arcadeStats.multiplier;
+    arcadeStats.xp += bonus;
+    spawnNeonConfetti(25);
+    showToast(`🔥 ${arcadeStats.streak}x SWIPE STREAK! +${bonus} Bonus XP! Tap 🎰 Spin for a Mystery Moonshot!`);
+  }
+
+  saveArcadeStats();
+  updateArcadeUI();
+}
+
 // Initialize Swipe Engine
 function initSwipeController() {
   const filtered = getFilteredCoins();
@@ -1074,6 +1234,7 @@ function initSwipeController() {
     onSwipe: async (coin, direction) => {
       sound.playSwipe(direction);
       DexService.markCoinSwiped(coin.id);
+      recordArcadeSwipe(coin, direction);
 
       if (direction === 'right') {
         const wallet = WalletService.getState();
@@ -1083,9 +1244,13 @@ function initSwipeController() {
           const res = await JupiterService.executeSwap(coin, selectedApeSol);
           if (res.success && res.txHash) {
             sound.playBuy();
+            arcadeStats.xp += 200 * arcadeStats.multiplier;
+            saveArcadeStats();
+            updateArcadeUI();
+            spawnNeonConfetti(35);
             PortfolioService.recordRealTrade(coin, selectedApeSol, res.txHash, res.tokensReceived || 0);
             updateMatchesBadge();
-            showToast(`🎉 Swap broadcasted on Solana Mainnet!`);
+            showToast(`🎉 Swap broadcasted on Solana Mainnet! (+200 XP)`);
           } else {
             showToast(`⚠️ ${res.message}`);
           }
@@ -1487,6 +1652,165 @@ function bindActions() {
     });
   }
 
+  // Gamified Degen Arena & Mystery Roulette Modal
+  const arenaModalBackdrop = document.getElementById('arenaModalBackdrop');
+  const btnCloseArenaModal = document.getElementById('btnCloseArenaModal');
+  const btnOpenMysterySpin = document.getElementById('btnOpenMysterySpin');
+  const btnOpenArenaRank = document.getElementById('btnOpenArenaRank');
+  const btnTriggerRouletteSpin = document.getElementById('btnTriggerRouletteSpin') as HTMLButtonElement | null;
+  const rouletteDisplayBox = document.getElementById('rouletteDisplayBox');
+  const btnShareArenaX = document.getElementById('btnShareArenaX');
+
+  function renderArenaStatsAndLeaderboard() {
+    const rankInfo = getDegenRankInfo(arcadeStats.xp);
+    const winRate = arcadeStats.totalCalls > 0
+      ? Math.min(99, Math.max(52, Math.round((arcadeStats.goodCalls / arcadeStats.totalCalls) * 100)))
+      : 100;
+
+    const elTitle = document.getElementById('arenaRankTitle');
+    const elXp = document.getElementById('arenaStatXp');
+    const elStreak = document.getElementById('arenaStatStreak');
+    const elRugs = document.getElementById('arenaStatRugs');
+    const elWinrate = document.getElementById('arenaStatWinrate');
+    const elMult = document.getElementById('arenaMultiplierBadge');
+    const elBoard = document.getElementById('arenaLeaderboardList');
+
+    if (elTitle) elTitle.innerText = rankInfo.fullTitle;
+    if (elXp) elXp.innerText = arcadeStats.xp.toLocaleString();
+    if (elStreak) elStreak.innerText = `🔥 ${arcadeStats.bestStreak}`;
+    if (elRugs) elRugs.innerText = `💀 ${arcadeStats.rugsDodged}`;
+    if (elWinrate) elWinrate.innerText = `${winRate}%`;
+    if (elMult) elMult.innerText = `⚡ ${arcadeStats.multiplier}x XP`;
+
+    if (elBoard) {
+      const wallet = WalletService.getState();
+      const myName = wallet.isConnected && wallet.publicKey
+        ? `You (${wallet.publicKey.slice(0, 4)}..${wallet.publicKey.slice(-4)})`
+        : 'You (Trench Swiper)';
+
+      const rivals = [
+        { name: '0xAnsem...pump', xp: 4820, badge: '👑 Trench God' },
+        { name: 'SolanaWhale.sol', xp: 2650, badge: '🦍 GigaChad' },
+        { name: 'DegenFrog99', xp: 1180, badge: '💎 Diamond' },
+        { name: 'PumpSniper_X', xp: 490, badge: '🐸 Hunter' },
+        { name: myName, xp: arcadeStats.xp, badge: rankInfo.shortTitle, isMe: true }
+      ].sort((a, b) => b.xp - a.xp);
+
+      elBoard.innerHTML = rivals.map((r, i) => `
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: ${(r as any).isMe ? 'rgba(253, 41, 123, 0.22)' : 'rgba(0,0,0,0.3)'}; border: 1px solid ${(r as any).isMe ? 'rgba(253, 41, 123, 0.5)' : 'rgba(255,255,255,0.06)'};">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 900; color: ${i === 0 ? '#fde68a' : '#94a3b8'}; width: 18px;">#${i + 1}</span>
+            <span style="font-weight: ${(r as any).isMe ? '900' : '700'}; color: ${(r as any).isMe ? '#fff' : '#e2e8f0'};">${escapeHtml(r.name)}</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 0.68rem; color: #cbd5e1;">${escapeHtml(r.badge)}</span>
+            <span style="font-family: monospace; font-weight: 900; color: #34d399;">${r.xp.toLocaleString()} XP</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  function openArenaModal() {
+    if (!arenaModalBackdrop) return;
+    renderArenaStatsAndLeaderboard();
+    document.body.classList.add('modal-active');
+    arenaModalBackdrop.classList.add('active');
+  }
+
+  function closeArenaModal() {
+    if (!arenaModalBackdrop) return;
+    document.body.classList.remove('modal-active');
+    arenaModalBackdrop.classList.remove('active');
+  }
+
+  if (btnOpenMysterySpin) btnOpenMysterySpin.addEventListener('click', openArenaModal);
+  if (btnOpenArenaRank) btnOpenArenaRank.addEventListener('click', openArenaModal);
+  if (btnCloseArenaModal) btnCloseArenaModal.addEventListener('click', closeArenaModal);
+  if (arenaModalBackdrop) {
+    arenaModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === arenaModalBackdrop) closeArenaModal();
+    });
+  }
+
+  if (btnTriggerRouletteSpin && rouletteDisplayBox) {
+    btnTriggerRouletteSpin.addEventListener('click', () => {
+      if (allCoins.length === 0) return;
+      btnTriggerRouletteSpin.disabled = true;
+      btnTriggerRouletteSpin.innerText = '🎰 SPINNING THE TRENCHES...';
+
+      let ticks = 0;
+      const maxTicks = 14;
+      const spinInterval = window.setInterval(() => {
+        ticks++;
+        sound.playSwipe('up');
+        const tempCoin = allCoins[Math.floor(Math.random() * allCoins.length)];
+        rouletteDisplayBox.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img src="${tempCoin.avatar}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid #fde68a;" onerror="this.src='/logo.jpg'" />
+            <div style="text-align: left;">
+              <div style="font-weight: 900; font-size: 0.95rem; color: #fff;">${escapeHtml(tempCoin.name)} ($${escapeHtml(tempCoin.symbol)})</div>
+              <div style="font-size: 0.72rem; color: #fde68a; font-family: monospace;">MCap: ${formatMcapShort(tempCoin.marketCap)}</div>
+            </div>
+          </div>
+        `;
+
+        if (ticks >= maxTicks) {
+          clearInterval(spinInterval);
+          const winner = allCoins[Math.floor(Math.random() * allCoins.length)];
+          const gotDoubleXp = Math.random() < 0.35;
+          if (gotDoubleXp) {
+            arcadeStats.multiplier = 2;
+          }
+          arcadeStats.xp += 50 * arcadeStats.multiplier;
+          saveArcadeStats();
+          updateArcadeUI();
+          renderArenaStatsAndLeaderboard();
+          sound.playBuy();
+          spawnNeonConfetti(35);
+
+          rouletteDisplayBox.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
+                <img src="${winner.avatar}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #10b981; box-shadow: 0 0 14px rgba(16,185,129,0.5);" onerror="this.src='/logo.jpg'" />
+                <div>
+                  <div style="font-size: 0.65rem; font-weight: 900; color: #34d399; text-transform: uppercase;">🎯 Mystery Gem Jackpot ${gotDoubleXp ? '+ ⚡ 2x XP Boost!' : '+50 XP!'}</div>
+                  <div style="font-weight: 900; font-size: 0.95rem; color: #fff;">${escapeHtml(winner.name)} ($${escapeHtml(winner.symbol)})</div>
+                  <div style="font-size: 0.72rem; color: #cbd5e1; font-family: monospace;">MCap: ${formatMcapShort(winner.marketCap)} · ${winner.change24h >= 0 ? '+' : ''}${winner.change24h}%</div>
+                </div>
+              </div>
+              <button id="btnInspectRouletteWinner" style="background: var(--primary-flame); border: none; color: white; font-size: 0.75rem; font-weight: 800; padding: 7px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap;">
+                🔥 Inspect &amp; Ape
+              </button>
+            </div>
+          `;
+
+          const btnInspect = document.getElementById('btnInspectRouletteWinner');
+          if (btnInspect) {
+            btnInspect.addEventListener('click', () => {
+              closeArenaModal();
+              openProfileModal(winner);
+            });
+          }
+
+          btnTriggerRouletteSpin.disabled = false;
+          btnTriggerRouletteSpin.innerText = '🎰 SPIN AGAIN (+50 XP)';
+        }
+      }, 95);
+    });
+  }
+
+  if (btnShareArenaX) {
+    btnShareArenaX.addEventListener('click', () => {
+      const rankInfo = getDegenRankInfo(arcadeStats.xp);
+      const winRate = arcadeStats.totalCalls > 0
+        ? Math.min(99, Math.max(52, Math.round((arcadeStats.goodCalls / arcadeStats.totalCalls) * 100)))
+        : 100;
+      const text = `My @MemeTinderr Trench Card 🔥🐸\n\nRank: ${rankInfo.fullTitle}\nXP: ${arcadeStats.xp.toLocaleString()} XP\nBest Streak: 🔥 ${arcadeStats.bestStreak}x\nRugs Dodged: 💀 ${arcadeStats.rugsDodged}\nCall Accuracy: 🎯 ${winRate}%\n\nOfficial Token: $MATCH (${OFFICIAL_MEMETINDER_CA})\nSwipe & Trade: https://memetinder.fun`;
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+    });
+  }
+
   // Escape key closes modals
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -1496,6 +1820,7 @@ function bindActions() {
       closeWalletModal();
       closeSearchModal();
       closeBoostModal();
+      closeArenaModal();
     }
   });
 }
@@ -1506,6 +1831,7 @@ async function boot() {
   WalletService.autoConnect();
 
   updateMatchesBadge();
+  updateArcadeUI();
   bindActions();
 
   // Load coins from DexService (live DexScreener top boosts + new trending)
