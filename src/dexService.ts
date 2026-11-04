@@ -249,6 +249,62 @@ export class DexService {
   }
 
   /**
+   * Fetch real-time live market cap, price, volume, liquidity, and txns for the live profile ticker
+   */
+  public static async fetchLiveMetrics(contractAddress: string): Promise<{
+    priceUsd: number;
+    marketCap: number;
+    volume24h: number;
+    liquidityUsd: number;
+    change24h: number;
+    change1h: number;
+    change5m: number;
+    buys24h: number;
+    sells24h: number;
+    pairAddress?: string;
+    chainId?: string;
+  } | null> {
+    const cleanAddr = contractAddress.trim();
+    if (!cleanAddr) return null;
+
+    try {
+      const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${cleanAddr}`, {
+        cache: 'no-store'
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!Array.isArray(data?.pairs) || data.pairs.length === 0) return null;
+
+      const bestPair = data.pairs.sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+      const priceUsd = parseFloat(bestPair.priceUsd) || 0;
+      const marketCap = bestPair.marketCap || bestPair.fdv || 0;
+      const volume24h = bestPair.volume?.h24 || 0;
+      const liquidityUsd = bestPair.liquidity?.usd || 0;
+      const change24h = bestPair.priceChange?.h24 ?? 0;
+      const change1h = bestPair.priceChange?.h1 ?? 0;
+      const change5m = bestPair.priceChange?.m5 ?? 0;
+      const buys24h = bestPair.txns?.h24?.buys ?? 0;
+      const sells24h = bestPair.txns?.h24?.sells ?? 0;
+
+      return {
+        priceUsd,
+        marketCap,
+        volume24h,
+        liquidityUsd,
+        change24h,
+        change1h,
+        change5m,
+        buys24h,
+        sells24h,
+        pairAddress: bestPair.pairAddress,
+        chainId: bestPair.chainId
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Search / import any token by contract address directly from DexScreener
    */
   public static async fetchTokenByAddress(contractAddress: string): Promise<MemeCoin | null> {
