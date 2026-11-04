@@ -5,6 +5,7 @@ import { SoundEngine } from './soundEngine';
 import { PortfolioService } from './portfolioService';
 import { WalletService, RealWalletState } from './walletService';
 import { JupiterService, JupiterQuote } from './jupiterService';
+import { escapeHtml } from './utils';
 
 // Initialize Sound Engine
 const sound = new SoundEngine();
@@ -284,8 +285,8 @@ function openProfileModal(coin: MemeCoin) {
       <img src="${coin.avatar}" style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.15); object-fit: cover;" alt="${coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
       <div>
         <div style="display: flex; align-items: center; gap: 8px;">
-          <h2 style="font-family: var(--font-display); font-size: 1.6rem; font-weight: 800;">${coin.name}</h2>
-          <span style="color: var(--text-muted); font-weight: 700;">$${coin.symbol}</span>
+          <h2 style="font-family: var(--font-display); font-size: 1.6rem; font-weight: 800;">${escapeHtml(coin.name)}</h2>
+          <span style="color: var(--text-muted); font-weight: 700;">$${escapeHtml(coin.symbol)}</span>
           ${coin.verified ? '<span class="verified-check">✓</span>' : ''}
         </div>
         <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 2px;">
@@ -414,7 +415,7 @@ function openMatchesModal() {
           <div class="match-item-left">
             <img class="match-item-avatar" src="${m.coin.avatar}" alt="${m.coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
             <div class="match-item-info">
-              <span class="match-item-name">${m.coin.name} <span style="color: var(--text-muted); font-size: 0.8rem;">$${m.coin.symbol}</span></span>
+              <span class="match-item-name">${escapeHtml(m.coin.name)} <span style="color: var(--text-muted); font-size: 0.8rem;">$${escapeHtml(m.coin.symbol)}</span></span>
               <span class="match-item-sub">
                 ${m.action === 'superlike' ? '⭐ Super Liked' : '🔥 Matched'} · $${m.coin.priceUsd < 0.01 ? m.coin.priceUsd.toFixed(6) : m.coin.priceUsd.toFixed(2)}
                 ${m.solSpent ? ` · <b style="color: #34d399;">${m.solSpent} SOL</b>` : ''}

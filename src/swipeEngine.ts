@@ -1,4 +1,5 @@
 import { MemeCoin } from './types';
+import { escapeHtml } from './utils';
 
 export interface SwipeCallbacks {
   onSwipe: (coin: MemeCoin, direction: 'left' | 'right' | 'up') => void;
@@ -108,8 +109,8 @@ export class SwipeEngine {
       <div class="card-info">
         <div class="card-headline">
           <div class="coin-title-group">
-            <h2 class="coin-name">${coin.name}</h2>
-            <span class="coin-symbol">$${coin.symbol}</span>
+            <h2 class="coin-name">${escapeHtml(coin.name)}</h2>
+            <span class="coin-symbol">$${escapeHtml(coin.symbol)}</span>
             ${coin.verified ? '<span class="verified-check" title="Verified Meme Legend">✓</span>' : ''}
           </div>
           <div class="coin-price-box">
@@ -118,7 +119,7 @@ export class SwipeEngine {
           </div>
         </div>
 
-        <p class="coin-tagline">“${coin.tagline}”</p>
+        <p class="coin-tagline">“${escapeHtml(coin.tagline)}”</p>
 
         <!-- Stats Grid -->
         <div class="card-stats-grid">
@@ -139,8 +140,8 @@ export class SwipeEngine {
         <!-- Trait Pills -->
         <div class="card-traits-row">
           ${safetyBadge}
-          <span class="trait-pill">${coin.devStatus}</span>
-          ${coin.traits.slice(0, 2).map(t => `<span class="trait-pill">${t}</span>`).join('')}
+          <span class="trait-pill">${escapeHtml(coin.devStatus)}</span>
+          ${coin.traits.slice(0, 2).map(t => `<span class="trait-pill">${escapeHtml(t)}</span>`).join('')}
         </div>
 
         <div class="card-tap-hint">
