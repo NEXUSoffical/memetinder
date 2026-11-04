@@ -1659,7 +1659,7 @@ function bindActions() {
   const btnOpenArenaRank = document.getElementById('btnOpenArenaRank');
   const btnShareArenaX = document.getElementById('btnShareArenaX');
 
-  function renderArenaStatsAndLeaderboard() {
+  async function renderArenaStatsAndLeaderboard() {
     const rankInfo = getDegenRankInfo(arcadeStats.xp);
     const winRate = arcadeStats.totalCalls > 0
       ? Math.min(99, Math.max(52, Math.round((arcadeStats.goodCalls / arcadeStats.totalCalls) * 100)))
@@ -1682,30 +1682,64 @@ function bindActions() {
 
     if (elBoard) {
       const wallet = WalletService.getState();
+      let anonId = localStorage.getItem('memetinder_player_id_v1');
+      if (!anonId) {
+        anonId = `swiper_${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem('memetinder_player_id_v1', anonId);
+      }
+
+      const myId = wallet.isConnected && wallet.publicKey ? wallet.publicKey : anonId;
       const myName = wallet.isConnected && wallet.publicKey
-        ? `You (${wallet.publicKey.slice(0, 4)}..${wallet.publicKey.slice(-4)})`
-        : 'You (Trench Swiper)';
+        ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)} (You)`
+        : `You (Connect Wallet to Verify)`;
 
-      const rivals = [
-        { name: '0xAnsem...pump', xp: 4820, badge: '👑 Trench God' },
-        { name: 'SolanaWhale.sol', xp: 2650, badge: '🦍 GigaChad' },
-        { name: 'DegenFrog99', xp: 1180, badge: '💎 Diamond' },
-        { name: 'PumpSniper_X', xp: 490, badge: '🐸 Hunter' },
-        { name: myName, xp: arcadeStats.xp, badge: rankInfo.shortTitle, isMe: true }
-      ].sort((a, b) => b.xp - a.xp);
+      let realPlayers: Array<{ playerId: string; displayName: string; xp: number; badge: string }> = [
+        { playerId: myId, displayName: myName, xp: arcadeStats.xp, badge: rankInfo.shortTitle }
+      ];
 
-      elBoard.innerHTML = rivals.map((r, i) => `
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: ${(r as any).isMe ? 'rgba(253, 41, 123, 0.22)' : 'rgba(0,0,0,0.3)'}; border: 1px solid ${(r as any).isMe ? 'rgba(253, 41, 123, 0.5)' : 'rgba(255,255,255,0.06)'};">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-weight: 900; color: ${i === 0 ? '#fde68a' : '#94a3b8'}; width: 18px;">#${i + 1}</span>
-            <span style="font-weight: ${(r as any).isMe ? '900' : '700'}; color: ${(r as any).isMe ? '#fff' : '#e2e8f0'};">${escapeHtml(r.name)}</span>
+      try {
+        const res = await fetch('/api/leaderboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            playerId: myId,
+            displayName: wallet.isConnected && wallet.publicKey
+              ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}`
+              : `Swiper #${anonId.slice(-4).toUpperCase()}`,
+            xp: arcadeStats.xp,
+            badge: rankInfo.shortTitle
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.leaderboard) && data.leaderboard.length > 0) {
+            realPlayers = data.leaderboard;
+          }
+        }
+      } catch {}
+
+      // Ensure current user is always up to date in the rendered list
+      if (!realPlayers.some(p => p.playerId === myId)) {
+        realPlayers.push({ playerId: myId, displayName: myName, xp: arcadeStats.xp, badge: rankInfo.shortTitle });
+      }
+      realPlayers.sort((a, b) => b.xp - a.xp);
+
+      elBoard.innerHTML = realPlayers.map((r, i) => {
+        const isMe = r.playerId === myId;
+        const label = isMe ? myName : r.displayName;
+        return `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: ${isMe ? 'rgba(253, 41, 123, 0.22)' : 'rgba(0,0,0,0.3)'}; border: 1px solid ${isMe ? 'rgba(253, 41, 123, 0.5)' : 'rgba(255,255,255,0.06)'};">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-weight: 900; color: ${i === 0 ? '#fde68a' : '#94a3b8'}; width: 18px;">#${i + 1}</span>
+              <span style="font-weight: ${isMe ? '900' : '700'}; color: ${isMe ? '#fff' : '#e2e8f0'};">${escapeHtml(label)}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.68rem; color: #cbd5e1;">${escapeHtml(r.badge)}</span>
+              <span style="font-family: monospace; font-weight: 900; color: #34d399;">${r.xp.toLocaleString()} XP</span>
+            </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-size: 0.68rem; color: #cbd5e1;">${escapeHtml(r.badge)}</span>
-            <span style="font-family: monospace; font-weight: 900; color: #34d399;">${r.xp.toLocaleString()} XP</span>
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
   }
 
