@@ -3,6 +3,8 @@ import { DexService } from './dexService';
 import { SwipeEngine } from './swipeEngine';
 import { SoundEngine } from './soundEngine';
 import { PortfolioService } from './portfolioService';
+import { WalletService, WalletState } from './walletService';
+import { JupiterService, JupiterQuote } from './jupiterService';
 
 // Initialize Sound Engine
 const sound = new SoundEngine();
@@ -11,14 +13,36 @@ const sound = new SoundEngine();
 let allCoins: MemeCoin[] = [];
 let activeFilter: FilterChain = 'all';
 let currentSwipedMatchCoin: MemeCoin | null = null;
+let currentJupiterQuote: JupiterQuote | null = null;
 let swipeEngine: SwipeEngine | null = null;
+
+// Quick Ape Settings
+let selectedApeSol = 0.1;
+let isAutoApeMode = false;
 
 // DOM Elements
 const cardStackContainer = document.getElementById('cardStackContainer') as HTMLElement;
 const matchesCountBadge = document.getElementById('matchesCountBadge') as HTMLElement;
 const btnAudioToggle = document.getElementById('btnAudioToggle') as HTMLButtonElement;
 const btnBrandHome = document.getElementById('btnBrandHome') as HTMLElement;
-const btnRefreshFeed = document.getElementById('btnRefreshFeed') as HTMLButtonElement;
+
+// Wallet DOM Elements
+const btnWalletToggle = document.getElementById('btnWalletToggle') as HTMLButtonElement;
+const walletBtnLabel = document.getElementById('walletBtnLabel') as HTMLElement;
+const walletModalBackdrop = document.getElementById('walletModalBackdrop') as HTMLElement;
+const btnCloseWalletModal = document.getElementById('btnCloseWalletModal') as HTMLButtonElement;
+const walletModalAddress = document.getElementById('walletModalAddress') as HTMLElement;
+const walletModalSolBal = document.getElementById('walletModalSolBal') as HTMLElement;
+const walletStatusTypeBadge = document.getElementById('walletStatusTypeBadge') as HTMLElement;
+const btnConnectPhantom = document.getElementById('btnConnectPhantom') as HTMLButtonElement;
+const btnSwitchToDemo = document.getElementById('btnSwitchToDemo') as HTMLButtonElement;
+const btnFaucetDemoSol = document.getElementById('btnFaucetDemoSol') as HTMLButtonElement;
+const btnDisconnectWallet = document.getElementById('btnDisconnectWallet') as HTMLButtonElement;
+
+// Quick Ape Presets & Auto-Ape Toggle
+const apePresetBtns = document.querySelectorAll('.ape-preset-btn');
+const btnAutoApeToggle = document.getElementById('btnAutoApeToggle') as HTMLElement;
+const autoApeText = document.getElementById('autoApeText') as HTMLElement;
 
 // Filter chips
 const filterChips = document.querySelectorAll('.filter-chip');
@@ -35,10 +59,16 @@ const matchModalBackdrop = document.getElementById('matchModalBackdrop') as HTML
 const btnCloseMatchModal = document.getElementById('btnCloseMatchModal') as HTMLButtonElement;
 const matchSubtitleText = document.getElementById('matchSubtitleText') as HTMLElement;
 const matchCoinAvatar = document.getElementById('matchCoinAvatar') as HTMLImageElement;
-const matchDialogueText = document.getElementById('matchDialogueText') as HTMLElement;
-const btnSimulateBuyMatch = document.getElementById('btnSimulateBuyMatch') as HTMLButtonElement;
 const btnOpenDexChart = document.getElementById('btnOpenDexChart') as HTMLAnchorElement;
 const btnKeepSwiping = document.getElementById('btnKeepSwiping') as HTMLButtonElement;
+
+// Jupiter Swap DOM
+const jupRouteLabel = document.getElementById('jupRouteLabel') as HTMLElement;
+const jupInAmount = document.getElementById('jupInAmount') as HTMLElement;
+const jupOutAmount = document.getElementById('jupOutAmount') as HTMLElement;
+const btnExecuteJupiterSwap = document.getElementById('btnExecuteJupiterSwap') as HTMLButtonElement;
+const btnSwapLabel = document.getElementById('btnSwapLabel') as HTMLElement;
+const txConfirmationArea = document.getElementById('txConfirmationArea') as HTMLElement;
 
 // Profile Modal
 const profileModalBackdrop = document.getElementById('profileModalBackdrop') as HTMLElement;
@@ -76,37 +106,118 @@ function updateMatchesBadge() {
   matchesCountBadge.style.display = count > 0 ? 'inline-block' : 'none';
 }
 
-// Funny Match Dialogue Quotes
-const MATCH_QUOTES = [
-  "You and this token both believe a 100x run is programmed.",
-  "Whales just entered the liquidity pool. Early momentum confirmed.",
-  "High velocity breakout volume! Dev is building and community is raiding.",
-  "Community takeover approved. Zero taxes, 100% pure degen conviction.",
-  "Trending on DexScreener top boosts! Fasten your seatbelts.",
-  "Top 10 holders own less than 15%. This is as decentralized as memes get."
-];
+// Update Wallet UI
+function updateWalletUI(wallet: WalletState) {
+  if (wallet.isConnected) {
+    btnWalletToggle.classList.add('connected');
+    if (wallet.type === 'phantom') {
+      const short = wallet.publicKey ? `${wallet.publicKey.slice(0, 4)}...${wallet.publicKey.slice(-4)}` : 'Phantom';
+      walletBtnLabel.innerHTML = `👻 <b>${wallet.solBalance.toFixed(2)} SOL</b> (${short})`;
+      walletStatusTypeBadge.innerText = 'PHANTOM (MAINNET)';
+      walletStatusTypeBadge.style.background = 'rgba(168, 85, 247, 0.2)';
+      walletStatusTypeBadge.style.color = '#d8b4fe';
+    } else {
+      walletBtnLabel.innerHTML = `🧪 <b>${wallet.solBalance.toFixed(2)} SOL</b> (Demo)`;
+      walletStatusTypeBadge.innerText = 'DEMO DEGEN (FREE)';
+      walletStatusTypeBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+      walletStatusTypeBadge.style.color = '#34d399';
+    }
+    walletModalAddress.innerText = wallet.publicKey || 'Connected';
+    walletModalSolBal.innerText = `${wallet.solBalance.toFixed(3)} SOL`;
+  } else {
+    btnWalletToggle.classList.remove('connected');
+    walletBtnLabel.innerText = '🟣 Connect Wallet';
+    walletModalAddress.innerText = 'Not Connected';
+    walletModalSolBal.innerText = '0.000 SOL';
+    walletStatusTypeBadge.innerText = 'DISCONNECTED';
+    walletStatusTypeBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+    walletStatusTypeBadge.style.color = '#f87171';
+  }
+}
 
-// Open Match Modal
-function triggerMatchModal(coin: MemeCoin, isSuperLike = false) {
+// Fetch & Update Jupiter Swap Quote for Match Modal
+async function loadJupiterQuoteForCoin(coin: MemeCoin) {
+  currentJupiterQuote = null;
+  jupInAmount.innerText = `${selectedApeSol} SOL (~$${(selectedApeSol * 95.8).toFixed(2)})`;
+  jupOutAmount.innerText = 'Fetching live Jupiter quote...';
+  jupRouteLabel.innerText = '🪐 Jupiter Routing...';
+  txConfirmationArea.style.display = 'none';
+  btnExecuteJupiterSwap.disabled = false;
+  btnSwapLabel.innerText = `🔥 1-Click Ape ${selectedApeSol} SOL Now`;
+
+  const quote = await JupiterService.getQuote(coin.contractAddress, selectedApeSol);
+  currentJupiterQuote = quote;
+
+  if (quote) {
+    const formattedTokens = quote.outAmountTokens > 1000 
+      ? quote.outAmountTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })
+      : quote.outAmountTokens.toFixed(2);
+    jupOutAmount.innerText = `~${formattedTokens} $${coin.symbol}`;
+    jupRouteLabel.innerText = `🪐 ${quote.routeLabel}`;
+  } else {
+    // Realistic fallback estimation based on live coin price
+    const estTokens = (selectedApeSol * 95.8) / (coin.priceUsd || 0.001);
+    const formattedTokens = estTokens > 1000 
+      ? estTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })
+      : estTokens.toFixed(2);
+    jupOutAmount.innerText = `~${formattedTokens} $${coin.symbol}`;
+    jupRouteLabel.innerText = '🪐 Jupiter ➔ Raydium CPMM';
+  }
+}
+
+// Open Match Modal with Jupiter Swap
+async function triggerMatchModal(coin: MemeCoin, isSuperLike = false) {
   currentSwipedMatchCoin = coin;
   matchSubtitleText.innerText = isSuperLike 
-    ? `⭐ SUPER LIKE! You and $${coin.symbol} are shooting for the moon!`
-    : `You and $${coin.symbol} are ready to send it!`;
+    ? `⭐ SUPER LIKE! 1-Click Swap $${coin.symbol} via Jupiter.`
+    : `You matched with $${coin.symbol}! Ape in directly on Solana.`;
   
   matchCoinAvatar.src = coin.avatar;
-  const randomQuote = MATCH_QUOTES[Math.floor(Math.random() * MATCH_QUOTES.length)];
-  matchDialogueText.innerText = `"${randomQuote}"`;
-
   btnOpenDexChart.href = coin.dexScreenerUrl;
-  btnSimulateBuyMatch.innerHTML = `<span>💸 Ape In $200 (Paper Bag)</span>`;
 
   document.body.classList.add('modal-active');
   matchModalBackdrop.classList.add('active');
+
+  loadJupiterQuoteForCoin(coin);
 }
 
 function closeMatchModal() {
   document.body.classList.remove('modal-active');
   matchModalBackdrop.classList.remove('active');
+}
+
+// Execute 1-Click Swap
+async function handleSwapExecution() {
+  if (!currentSwipedMatchCoin) return;
+  const coin = currentSwipedMatchCoin;
+
+  btnExecuteJupiterSwap.disabled = true;
+  btnSwapLabel.innerText = '⏳ Routing Swap via Jupiter...';
+
+  const res = await JupiterService.executeSwap(coin, selectedApeSol, currentJupiterQuote);
+
+  if (res.success) {
+    sound.playBuy();
+    updateMatchesBadge();
+    btnSwapLabel.innerText = '✓ Swap Confirmed!';
+    
+    // Show Solscan transaction link
+    txConfirmationArea.style.display = 'block';
+    txConfirmationArea.innerHTML = `
+      <div class="tx-confirmation-banner">
+        <span style="font-weight: 800; color: #10b981;">🚀 1-Click Swap Confirmed on Solana!</span>
+        <span style="color: #cbd5e1;">Aped ${selectedApeSol} SOL into <b>${res.tokensReceived ? (res.tokensReceived > 1000 ? res.tokensReceived.toLocaleString(undefined, { maximumFractionDigits: 0 }) : res.tokensReceived.toFixed(2)) : ''} $${coin.symbol}</b></span>
+        <a class="tx-solscan-link" href="${res.solscanUrl}" target="_blank" rel="noopener">
+          View on Solscan ↗
+        </a>
+      </div>
+    `;
+    showToast(`⚡ Aped ${selectedApeSol} SOL into $${coin.symbol}!`);
+  } else {
+    btnExecuteJupiterSwap.disabled = false;
+    btnSwapLabel.innerText = `🔥 1-Click Ape ${selectedApeSol} SOL Now`;
+    showToast(`⚠️ ${res.message}`);
+  }
 }
 
 // Open Token Profile Modal with Interactive Chart
@@ -217,7 +328,7 @@ function openProfileModal(coin: MemeCoin) {
         📈 DexScreener Live
       </a>
       <button id="btnProfileApeIn" style="flex: 1; background: var(--color-green); border: none; color: #04101e; padding: 12px; border-radius: 999px; font-weight: 800; font-size: 0.9rem; cursor: pointer;">
-        🔥 Ape In ($200)
+        🔥 1-Click Ape (${selectedApeSol} SOL)
       </button>
     </div>
   `;
@@ -235,13 +346,18 @@ function openProfileModal(coin: MemeCoin) {
 
   const btnProfileApe = document.getElementById('btnProfileApeIn');
   if (btnProfileApe) {
-    btnProfileApe.addEventListener('click', () => {
-      sound.playBuy();
-      const res = PortfolioService.buyPaper(coin, 200);
-      PortfolioService.addMatch(coin, 'ape');
-      updateMatchesBadge();
-      showToast(res.message);
-      closeProfileModal();
+    btnProfileApe.addEventListener('click', async () => {
+      btnProfileApe.innerText = '⏳ Swapping...';
+      const res = await JupiterService.executeSwap(coin, selectedApeSol);
+      if (res.success) {
+        sound.playBuy();
+        updateMatchesBadge();
+        showToast(res.message);
+        closeProfileModal();
+      } else {
+        btnProfileApe.innerText = `🔥 1-Click Ape (${selectedApeSol} SOL)`;
+        showToast(`⚠️ ${res.message}`);
+      }
     });
   }
 
@@ -272,7 +388,7 @@ function openMatchesModal() {
       <div style="text-align: center; padding: 36px 12px; color: var(--text-muted);">
         <div style="font-size: 2.5rem; margin-bottom: 8px;">💔</div>
         <p style="font-weight: 700;">No matches in your bag yet.</p>
-        <p style="font-size: 0.8rem; margin-top: 4px;">Swipe right (🔥) or Super Like (⭐) to add coins to your watch bag!</p>
+        <p style="font-size: 0.8rem; margin-top: 4px;">Swipe right (🔥) or Super Like (⭐) to 1-Click Ape into coins!</p>
       </div>
     `;
   } else {
@@ -324,6 +440,17 @@ function closeMatchesModal() {
   matchesModalBackdrop.classList.remove('active');
 }
 
+// Wallet Modal Handlers
+function openWalletModal() {
+  document.body.classList.add('modal-active');
+  walletModalBackdrop.classList.add('active');
+}
+
+function closeWalletModal() {
+  document.body.classList.remove('modal-active');
+  walletModalBackdrop.classList.remove('active');
+}
+
 // Filter Coins
 function getFilteredCoins(): MemeCoin[] {
   if (activeFilter === 'all') return allCoins;
@@ -359,14 +486,27 @@ function initSwipeController() {
   const filtered = getFilteredCoins();
 
   swipeEngine = new SwipeEngine(cardStackContainer, filtered, {
-    onSwipe: (coin, direction) => {
+    onSwipe: async (coin, direction) => {
       sound.playSwipe(direction);
 
       if (direction === 'right') {
-        sound.playMatch();
-        PortfolioService.addMatch(coin, 'ape');
-        updateMatchesBadge();
-        triggerMatchModal(coin, false);
+        if (isAutoApeMode) {
+          // AUTO-APE MODE: Instant buy in background!
+          sound.playBuy();
+          const res = await JupiterService.executeSwap(coin, selectedApeSol);
+          if (res.success) {
+            updateMatchesBadge();
+            showToast(`⚡ Auto-Aped ${selectedApeSol} SOL into $${coin.symbol}!`);
+          } else {
+            showToast(`⚠️ ${res.message}`);
+          }
+        } else {
+          // Standard Review Mode: Open Match with Jupiter Route
+          sound.playMatch();
+          PortfolioService.addMatch(coin, 'ape');
+          updateMatchesBadge();
+          triggerMatchModal(coin, false);
+        }
       } else if (direction === 'up') {
         sound.playSuperLike();
         PortfolioService.addMatch(coin, 'superlike');
@@ -432,10 +572,6 @@ function bindActions() {
     applyFilter('runners');
   });
 
-  btnRefreshFeed.addEventListener('click', () => {
-    refreshTrendingFeed();
-  });
-
   // Top Bar Brand Home Click
   btnBrandHome.addEventListener('click', () => {
     applyFilter('all');
@@ -450,6 +586,57 @@ function bindActions() {
   });
   btnAudioToggle.innerText = sound.getMuted() ? '🔇' : '🔊';
 
+  // Wallet Modal
+  btnWalletToggle.addEventListener('click', openWalletModal);
+  btnCloseWalletModal.addEventListener('click', closeWalletModal);
+  walletModalBackdrop.addEventListener('click', (e) => {
+    if (e.target === walletModalBackdrop) closeWalletModal();
+  });
+
+  btnConnectPhantom.addEventListener('click', async () => {
+    const res = await WalletService.connectPhantom();
+    showToast(res.message);
+    if (res.success) closeWalletModal();
+  });
+
+  btnSwitchToDemo.addEventListener('click', () => {
+    WalletService.connectDemo();
+    showToast('🧪 Switched to Demo Degen Wallet (5.0 SOL)');
+    closeWalletModal();
+  });
+
+  btnFaucetDemoSol.addEventListener('click', () => {
+    WalletService.resetDemoBalance(5.0);
+    showToast('🚰 Faucet: Demo wallet refilled with 5.0 SOL!');
+  });
+
+  btnDisconnectWallet.addEventListener('click', () => {
+    WalletService.disconnect();
+    showToast('Wallet Disconnected.');
+    closeWalletModal();
+  });
+
+  // Quick Ape Amount Presets
+  apePresetBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      apePresetBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedApeSol = parseFloat(btn.getAttribute('data-sol') || '0.1');
+      showToast(`⚡ Quick Ape set to ${selectedApeSol} SOL`);
+      if (currentSwipedMatchCoin) {
+        loadJupiterQuoteForCoin(currentSwipedMatchCoin);
+      }
+    });
+  });
+
+  // Auto-Ape Toggle
+  btnAutoApeToggle.addEventListener('click', () => {
+    isAutoApeMode = !isAutoApeMode;
+    btnAutoApeToggle.classList.toggle('active', isAutoApeMode);
+    autoApeText.innerText = isAutoApeMode ? `Auto-Ape: ON (${selectedApeSol} SOL)` : 'Auto-Ape: OFF';
+    showToast(isAutoApeMode ? `⚡ Auto-Ape ENABLED! Swiping right will buy ${selectedApeSol} SOL!` : 'Auto-Ape Disabled (Review mode on swipe)');
+  });
+
   // Filters
   filterChips.forEach(chip => {
     chip.addEventListener('click', () => {
@@ -458,31 +645,27 @@ function bindActions() {
     });
   });
 
-  // Modal Closures
+  // Match Modal Closures
   btnCloseMatchModal.addEventListener('click', closeMatchModal);
   btnKeepSwiping.addEventListener('click', closeMatchModal);
   matchModalBackdrop.addEventListener('click', (e) => {
     if (e.target === matchModalBackdrop) closeMatchModal();
   });
 
+  // Execute Jupiter Swap Button
+  btnExecuteJupiterSwap.addEventListener('click', handleSwapExecution);
+
+  // Profile Modal Closures
   btnCloseProfileModal.addEventListener('click', closeProfileModal);
   profileModalBackdrop.addEventListener('click', (e) => {
     if (e.target === profileModalBackdrop) closeProfileModal();
   });
 
+  // Matches Modal Closures
   btnOpenMatches.addEventListener('click', openMatchesModal);
   btnCloseMatchesModal.addEventListener('click', closeMatchesModal);
   matchesModalBackdrop.addEventListener('click', (e) => {
     if (e.target === matchesModalBackdrop) closeMatchesModal();
-  });
-
-  // Simulate buy from Match Modal
-  btnSimulateBuyMatch.addEventListener('click', () => {
-    if (!currentSwipedMatchCoin) return;
-    sound.playBuy();
-    const res = PortfolioService.buyPaper(currentSwipedMatchCoin, 200);
-    showToast(res.message);
-    closeMatchModal();
   });
 
   // Escape key closes modals
@@ -491,12 +674,16 @@ function bindActions() {
       closeMatchModal();
       closeProfileModal();
       closeMatchesModal();
+      closeWalletModal();
     }
   });
 }
 
 // App Bootstrapper
 async function boot() {
+  WalletService.onStateChange(updateWalletUI);
+  WalletService.init();
+
   updateMatchesBadge();
   bindActions();
 

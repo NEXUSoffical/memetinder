@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>MemeTinder - Trending Crypto Meme Coins</title>
-  <meta name="description" content="Tinder for newly trending crypto meme coins. Swipe right to Ape In, swipe left to Pass, match with viral 100x moonshots." />
+  <title>MemeTinder - 1-Click Swap & Trending Crypto Memes</title>
+  <meta name="description" content="Tinder meets Jupiter 1-Click Swap. Connect Phantom or Demo wallet, swipe right to Ape In directly on Solana." />
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,24 +23,42 @@
         <div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <h1 class="brand-text">MemeTinder</h1>
-            <span class="brand-tag">TRENDING</span>
+            <span class="brand-tag">SWAP v2</span>
           </div>
           <div class="live-feed-indicator" id="liveFeedIndicator">
             <span class="live-dot"></span>
-            <span class="live-text">DexScreener Live</span>
+            <span class="live-text">Jupiter + DexScreener</span>
           </div>
         </div>
       </div>
 
       <div class="header-actions">
-        <button class="header-icon-btn" id="btnRefreshFeed" title="Fetch Fresh Trending Coins">🔄</button>
+        <button class="header-btn btn-wallet" id="btnWalletToggle" title="Solana Wallet Settings">
+          <span id="walletBtnLabel">🟣 Connect Wallet</span>
+        </button>
         <button class="header-icon-btn" id="btnAudioToggle" title="Toggle Sound">🔊</button>
-        <button class="header-btn" id="btnOpenMatches" title="View Matched Coins & Paper Portfolio">
+        <button class="header-btn" id="btnOpenMatches" title="View Matched Coins & Portfolio Bag">
           <span>💼 Bag</span>
           <span class="badge" id="matchesCountBadge">0</span>
         </button>
       </div>
     </header>
+
+    <!-- 1-Click Quick Ape Control Subbar -->
+    <div class="quick-ape-subbar">
+      <div class="quick-ape-presets">
+        <span style="font-size: 0.7rem; color: var(--text-subtle); font-weight: 700;">APE:</span>
+        <button class="ape-preset-btn" data-sol="0.05">0.05 S</button>
+        <button class="ape-preset-btn active" data-sol="0.10">0.1 SOL</button>
+        <button class="ape-preset-btn" data-sol="0.25">0.25 S</button>
+        <button class="ape-preset-btn" data-sol="0.50">0.5 SOL</button>
+      </div>
+
+      <div class="auto-ape-toggle-group" id="btnAutoApeToggle" title="When ON, swiping right immediately buys via Jupiter!">
+        <span id="autoApeIndicator">⚡</span>
+        <span id="autoApeText">Auto-Ape: OFF</span>
+      </div>
+    </div>
 
     <!-- Filter Bar -->
     <nav class="chain-filter-bar">
@@ -68,14 +86,14 @@
     </footer>
   </div>
 
-  <!-- "IT'S A MATCH!" Modal -->
+  <!-- "IT'S A MATCH!" Swap Modal -->
   <div class="modal-backdrop" id="matchModalBackdrop">
     <div class="modal-content-card">
       <button class="modal-close-btn" id="btnCloseMatchModal">✕</button>
       
       <div class="match-modal-body">
         <h2 class="match-header-text">IT'S A MATCH!</h2>
-        <p class="match-subtitle" id="matchSubtitleText">You and this coin are ready to send it.</p>
+        <p class="match-subtitle" id="matchSubtitleText">Ready to send it on Solana.</p>
 
         <div class="match-avatars-stage">
           <img class="match-avatar degen" src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=200&q=80" alt="You" />
@@ -83,13 +101,33 @@
           <img class="match-avatar" id="matchCoinAvatar" src="" alt="Meme Coin" />
         </div>
 
-        <div class="match-dialogue-box" id="matchDialogueText">
-          "Whales just entered the pool. Liquidity locked. Dev promised not to dump."
+        <!-- Jupiter Live Swap Box -->
+        <div class="jupiter-swap-card" id="jupiterSwapCard">
+          <div class="jupiter-swap-header">
+            <span style="font-weight: 800; font-size: 0.85rem;">🪐 Jupiter 1-Click Route</span>
+            <span class="jupiter-badge" id="jupRouteLabel">🪐 Raydium CPMM</span>
+          </div>
+
+          <div class="jupiter-quote-row">
+            <span class="jupiter-row-label">You Pay:</span>
+            <span class="jupiter-row-val" id="jupInAmount">0.1 SOL (~$9.58)</span>
+          </div>
+          <div class="jupiter-quote-row">
+            <span class="jupiter-row-label">Estimated Output:</span>
+            <span class="jupiter-row-val" style="color: #34d399;" id="jupOutAmount">Fetching quote...</span>
+          </div>
+          <div class="jupiter-quote-row">
+            <span class="jupiter-row-label">Slippage Tolerance:</span>
+            <span class="jupiter-row-val" style="color: #cbd5e1;">1.0%</span>
+          </div>
         </div>
 
+        <!-- Tx Confirmation Placeholder -->
+        <div id="txConfirmationArea" style="display: none; width: 100%;"></div>
+
         <div class="match-actions-col">
-          <button class="btn-match-ape" id="btnSimulateBuyMatch">
-            <span>💸 Ape In $200 (Paper Bag)</span>
+          <button class="btn-match-ape" id="btnExecuteJupiterSwap">
+            <span id="btnSwapLabel">🔥 1-Click Ape 0.1 SOL Now</span>
           </button>
           <a class="btn-match-chart" id="btnOpenDexChart" href="#" target="_blank" rel="noopener">
             <span>📈 View DexScreener Live Chart ↗</span>
@@ -98,6 +136,59 @@
             Keep Swiping
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wallet Connection & Settings Modal -->
+  <div class="modal-backdrop" id="walletModalBackdrop">
+    <div class="modal-content-card">
+      <button class="modal-close-btn" id="btnCloseWalletModal">✕</button>
+
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 800; margin-bottom: 6px;">
+        Solana Wallet
+      </h2>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 18px;">
+        Connect your real Solana wallet or use the Demo Degen Wallet for instant zero-risk 1-click swaps.
+      </p>
+
+      <!-- Active Wallet Card -->
+      <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 18px; padding: 16px; margin-bottom: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Current Wallet</span>
+          <span id="walletStatusTypeBadge" style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); color: #34d399;">DEMO DEGEN</span>
+        </div>
+        <div style="font-family: monospace; font-size: 0.95rem; color: #f8fafc; font-weight: 700;" id="walletModalAddress">
+          DeGeN...420x
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px;">
+          <span style="font-size: 0.8rem; color: var(--text-muted);">SOL Balance:</span>
+          <span style="font-family: var(--font-display); font-size: 1.4rem; font-weight: 900; color: #34d399;" id="walletModalSolBal">
+            5.000 SOL
+          </span>
+        </div>
+      </div>
+
+      <!-- Wallet Options -->
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
+        <button id="btnConnectPhantom" style="display: flex; align-items: center; justify-content: space-between; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: white; padding: 14px 18px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
+          <span>👻 Connect Phantom Wallet</span>
+          <span style="font-size: 0.75rem; color: #d8b4fe;">Real SOL</span>
+        </button>
+
+        <button id="btnSwitchToDemo" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-subtle); color: white; padding: 14px 18px; border-radius: 16px; font-weight: 800; font-size: 0.95rem; cursor: pointer;">
+          <span>🧪 Demo Degen Wallet (5 SOL)</span>
+          <span style="font-size: 0.75rem; color: #a3e635;">Free Testing</span>
+        </button>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button id="btnFaucetDemoSol" style="flex: 1; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-subtle); color: #cbd5e1; padding: 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+          🚰 Reset to 5.0 SOL
+        </button>
+        <button id="btnDisconnectWallet" style="flex: 1; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; padding: 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+          Disconnect
+        </button>
       </div>
     </div>
   </div>
