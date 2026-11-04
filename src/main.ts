@@ -1219,7 +1219,7 @@ function recordArcadeSwipe(coin: MemeCoin, direction: 'left' | 'right' | 'up') {
     const bonus = 50 * arcadeStats.multiplier;
     arcadeStats.xp += bonus;
     spawnNeonConfetti(25);
-    showToast(`🔥 ${arcadeStats.streak}x SWIPE STREAK! +${bonus} Bonus XP! Tap 🎰 Spin for a Mystery Moonshot!`);
+    showToast(`🔥 ${arcadeStats.streak}x SWIPE STREAK! +${bonus} Bonus XP!`);
   }
 
   saveArcadeStats();
@@ -1652,13 +1652,11 @@ function bindActions() {
     });
   }
 
-  // Gamified Degen Arena & Mystery Roulette Modal
+  // Gamified Trench Rank & Leaderboard Modal
   const arenaModalBackdrop = document.getElementById('arenaModalBackdrop');
   const btnCloseArenaModal = document.getElementById('btnCloseArenaModal');
   const btnOpenMysterySpin = document.getElementById('btnOpenMysterySpin');
   const btnOpenArenaRank = document.getElementById('btnOpenArenaRank');
-  const btnTriggerRouletteSpin = document.getElementById('btnTriggerRouletteSpin') as HTMLButtonElement | null;
-  const rouletteDisplayBox = document.getElementById('rouletteDisplayBox');
   const btnShareArenaX = document.getElementById('btnShareArenaX');
 
   function renderArenaStatsAndLeaderboard() {
@@ -1730,73 +1728,6 @@ function bindActions() {
   if (arenaModalBackdrop) {
     arenaModalBackdrop.addEventListener('click', (e) => {
       if (e.target === arenaModalBackdrop) closeArenaModal();
-    });
-  }
-
-  if (btnTriggerRouletteSpin && rouletteDisplayBox) {
-    btnTriggerRouletteSpin.addEventListener('click', () => {
-      if (allCoins.length === 0) return;
-      btnTriggerRouletteSpin.disabled = true;
-      btnTriggerRouletteSpin.innerText = '🎰 SPINNING THE TRENCHES...';
-
-      let ticks = 0;
-      const maxTicks = 14;
-      const spinInterval = window.setInterval(() => {
-        ticks++;
-        sound.playSwipe('up');
-        const tempCoin = allCoins[Math.floor(Math.random() * allCoins.length)];
-        rouletteDisplayBox.innerHTML = `
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="${tempCoin.avatar}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid #fde68a;" onerror="this.src='/logo.jpg'" />
-            <div style="text-align: left;">
-              <div style="font-weight: 900; font-size: 0.95rem; color: #fff;">${escapeHtml(tempCoin.name)} ($${escapeHtml(tempCoin.symbol)})</div>
-              <div style="font-size: 0.72rem; color: #fde68a; font-family: monospace;">MCap: ${formatMcapShort(tempCoin.marketCap)}</div>
-            </div>
-          </div>
-        `;
-
-        if (ticks >= maxTicks) {
-          clearInterval(spinInterval);
-          const winner = allCoins[Math.floor(Math.random() * allCoins.length)];
-          const gotDoubleXp = Math.random() < 0.35;
-          if (gotDoubleXp) {
-            arcadeStats.multiplier = 2;
-          }
-          arcadeStats.xp += 50 * arcadeStats.multiplier;
-          saveArcadeStats();
-          updateArcadeUI();
-          renderArenaStatsAndLeaderboard();
-          sound.playBuy();
-          spawnNeonConfetti(35);
-
-          rouletteDisplayBox.innerHTML = `
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 10px;">
-              <div style="display: flex; align-items: center; gap: 10px; text-align: left;">
-                <img src="${winner.avatar}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #10b981; box-shadow: 0 0 14px rgba(16,185,129,0.5);" onerror="this.src='/logo.jpg'" />
-                <div>
-                  <div style="font-size: 0.65rem; font-weight: 900; color: #34d399; text-transform: uppercase;">🎯 Mystery Gem Jackpot ${gotDoubleXp ? '+ ⚡ 2x XP Boost!' : '+50 XP!'}</div>
-                  <div style="font-weight: 900; font-size: 0.95rem; color: #fff;">${escapeHtml(winner.name)} ($${escapeHtml(winner.symbol)})</div>
-                  <div style="font-size: 0.72rem; color: #cbd5e1; font-family: monospace;">MCap: ${formatMcapShort(winner.marketCap)} · ${winner.change24h >= 0 ? '+' : ''}${winner.change24h}%</div>
-                </div>
-              </div>
-              <button id="btnInspectRouletteWinner" style="background: var(--primary-flame); border: none; color: white; font-size: 0.75rem; font-weight: 800; padding: 7px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap;">
-                🔥 Inspect &amp; Ape
-              </button>
-            </div>
-          `;
-
-          const btnInspect = document.getElementById('btnInspectRouletteWinner');
-          if (btnInspect) {
-            btnInspect.addEventListener('click', () => {
-              closeArenaModal();
-              openProfileModal(winner);
-            });
-          }
-
-          btnTriggerRouletteSpin.disabled = false;
-          btnTriggerRouletteSpin.innerText = '🎰 SPIN AGAIN (+50 XP)';
-        }
-      }, 95);
     });
   }
 
