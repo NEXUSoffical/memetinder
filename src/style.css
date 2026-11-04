@@ -1,30 +1,30 @@
 :root {
-  --bg-dark: #0a0c10;
-  --bg-card: rgba(18, 21, 28, 0.88);
-  --bg-surface: rgba(26, 30, 42, 0.75);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-glow: rgba(253, 41, 123, 0.4);
+  --bg-dark: #1b0a33;
+  --bg-card: linear-gradient(165deg, rgba(46, 20, 77, 0.92) 0%, rgba(25, 16, 52, 0.96) 100%);
+  --bg-surface: rgba(48, 25, 82, 0.78);
+  --border-subtle: rgba(255, 255, 255, 0.14);
+  --border-glow: rgba(253, 41, 123, 0.55);
   
-  --primary-flame: linear-gradient(135deg, #fd297b, #ff5864, #ff655b);
+  --primary-flame: linear-gradient(135deg, #ff2a7a, #ff5864, #ff8142);
   --color-flame: #ff4760;
   --color-green: #10b981;
-  --color-green-glow: rgba(16, 185, 129, 0.35);
+  --color-green-glow: rgba(16, 185, 129, 0.45);
   --color-red: #ef4444;
-  --color-red-glow: rgba(239, 68, 68, 0.35);
+  --color-red-glow: rgba(239, 68, 68, 0.45);
   --color-cyan: #06b6d4;
   --color-amber: #f59e0b;
-  --color-purple: #a855f7;
+  --color-purple: #c084fc;
 
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-subtle: #64748b;
+  --text-main: #ffffff;
+  --text-muted: #cbd5e1;
+  --text-subtle: #94a3b8;
 
   --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Outfit', var(--font-family);
 
   --radius-card: 26px;
   --radius-pill: 9999px;
-  --shadow-card: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-card: 0 24px 55px -12px rgba(15, 4, 34, 0.8), 0 0 35px rgba(253, 41, 123, 0.22), 0 0 0 1px rgba(255, 120, 180, 0.22);
 }
 
 * {
@@ -37,7 +37,7 @@
 }
 
 body {
-  background: var(--bg-dark);
+  background-color: #1c0b38;
   color: var(--text-main);
   font-family: var(--font-family);
   min-height: 100vh;
@@ -48,12 +48,16 @@ body {
   align-items: center;
   justify-content: flex-start;
   background-image: 
-    radial-gradient(circle at 50% 0%, rgba(253, 41, 123, 0.12), transparent 45%),
-    radial-gradient(circle at 10% 80%, rgba(16, 185, 129, 0.08), transparent 40%),
-    radial-gradient(circle at 90% 70%, rgba(168, 85, 247, 0.08), transparent 40%);
+    radial-gradient(circle at 50% -5%, rgba(255, 42, 122, 0.42), transparent 52%),
+    radial-gradient(circle at 12% 22%, rgba(192, 132, 252, 0.35), transparent 48%),
+    radial-gradient(circle at 88% 28%, rgba(255, 115, 64, 0.32), transparent 48%),
+    radial-gradient(circle at 15% 85%, rgba(20, 241, 149, 0.25), transparent 50%),
+    radial-gradient(circle at 85% 82%, rgba(56, 189, 248, 0.28), transparent 50%),
+    linear-gradient(135deg, #240b42 0%, #3d1053 32%, #1e1348 68%, #121c44 100%);
+  background-attachment: fixed;
 }
 
-/* Background Ambient Blur */
+/* Vibrant Multi-Layered Ambient Background */
 .ambient-glow {
   position: fixed;
   top: 0;
@@ -62,6 +66,79 @@ body {
   height: 100vh;
   pointer-events: none;
   z-index: 0;
+  overflow: hidden;
+}
+
+.ambient-banner-bg {
+  position: absolute;
+  inset: -40px;
+  background-image: url('/banner.jpg');
+  background-size: cover;
+  background-position: center;
+  opacity: 0.22;
+  filter: blur(26px) saturate(1.9) contrast(1.1);
+  transform: scale(1.08);
+  mix-blend-mode: screen;
+}
+
+.ambient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(75px);
+  opacity: 0.65;
+  animation: floatAurora 14s ease-in-out infinite alternate;
+}
+
+.ambient-orb.orb-flame {
+  width: 520px;
+  height: 520px;
+  top: -120px;
+  left: -100px;
+  background: radial-gradient(circle, rgba(255, 42, 122, 0.65) 0%, rgba(255, 101, 91, 0.25) 60%, transparent 100%);
+}
+
+.ambient-orb.orb-purple {
+  width: 560px;
+  height: 560px;
+  top: 18%;
+  right: -130px;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.65) 0%, rgba(236, 72, 153, 0.3) 60%, transparent 100%);
+  animation-delay: -4s;
+}
+
+.ambient-orb.orb-cyan {
+  width: 480px;
+  height: 480px;
+  bottom: -120px;
+  left: 8%;
+  background: radial-gradient(circle, rgba(20, 241, 149, 0.45) 0%, rgba(6, 182, 212, 0.25) 60%, transparent 100%);
+  animation-delay: -8s;
+}
+
+.ambient-orb.orb-gold {
+  width: 420px;
+  height: 420px;
+  bottom: 5%;
+  right: 10%;
+  background: radial-gradient(circle, rgba(251, 146, 60, 0.42) 0%, rgba(244, 63, 94, 0.22) 60%, transparent 100%);
+  animation-delay: -6s;
+}
+
+.ambient-grid {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 20%, transparent 85%);
+  -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 20%, transparent 85%);
+}
+
+@keyframes floatAurora {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(28px, -22px, 0) scale(1.08); }
+  100% { transform: translate3d(-20px, 24px, 0) scale(0.96); }
 }
 
 /* App Container */
@@ -429,8 +506,8 @@ body {
   cursor: grab;
   touch-action: none;
   transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  backdrop-filter: blur(20px);
+  border: 1.5px solid rgba(255, 110, 175, 0.28);
+  backdrop-filter: blur(24px);
 }
 
 .tinder-card:active {
@@ -512,20 +589,45 @@ body {
   width: 100%;
   height: 52%;
   min-height: 240px;
-  background: #0f131a;
+  background: linear-gradient(135deg, #4c1d95 0%, #be185d 50%, #1e1b4b 100%);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
 
+.card-media-bg {
+  position: absolute;
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  object-fit: cover;
+  filter: blur(22px) saturate(2.1) brightness(0.85);
+  transform: scale(1.15);
+  opacity: 0.78;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.card-avatar-ring {
+  position: relative;
+  z-index: 4;
+  padding: 5px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff2a7a, #a855f7, #14f195);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 28px rgba(255, 42, 122, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .card-avatar-img {
-  width: 170px;
-  height: 170px;
+  width: 168px;
+  height: 168px;
   object-fit: cover;
   border-radius: 50%;
-  border: 4px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
+  border: 3px solid rgba(22, 11, 44, 0.9);
+  background: #1e1136;
   z-index: 2;
   transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -537,7 +639,9 @@ body {
 .card-gradient-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.1) 0%, rgba(18, 21, 28, 0.95) 100%);
+  background: 
+    radial-gradient(circle at 50% 38%, transparent 25%, rgba(28, 12, 54, 0.45) 75%),
+    linear-gradient(180deg, rgba(20, 8, 42, 0.08) 0%, rgba(31, 15, 58, 0.94) 100%);
   z-index: 3;
 }
 
@@ -550,15 +654,15 @@ body {
   border-radius: var(--radius-pill);
   font-size: 0.75rem;
   font-weight: 800;
-  backdrop-filter: blur(8px);
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  background: rgba(28, 12, 54, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.22);
 }
 
-.card-chain-pill.solana { color: #c084fc; border-color: rgba(192, 132, 252, 0.4); }
-.card-chain-pill.ethereum { color: #93c5fd; border-color: rgba(147, 197, 253, 0.4); }
-.card-chain-pill.base { color: #60a5fa; border-color: rgba(96, 165, 250, 0.4); }
-.card-chain-pill.pumpfun { color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
+.card-chain-pill.solana { color: #e9d5ff; border-color: rgba(192, 132, 252, 0.55); }
+.card-chain-pill.ethereum { color: #bfdbfe; border-color: rgba(147, 197, 253, 0.55); }
+.card-chain-pill.base { color: #93c5fd; border-color: rgba(96, 165, 250, 0.55); }
+.card-chain-pill.pumpfun { color: #86efac; border-color: rgba(74, 222, 128, 0.55); }
 
 .card-hype-badge {
   position: absolute;
@@ -569,10 +673,11 @@ body {
   border-radius: var(--radius-pill);
   font-size: 0.75rem;
   font-weight: 800;
-  background: rgba(253, 41, 123, 0.25);
-  color: #ff655b;
-  border: 1px solid rgba(253, 41, 123, 0.45);
-  backdrop-filter: blur(8px);
+  background: linear-gradient(135deg, rgba(253, 41, 123, 0.42), rgba(255, 101, 91, 0.38));
+  color: #ffe4e6;
+  border: 1px solid rgba(255, 110, 160, 0.6);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 14px rgba(253, 41, 123, 0.3);
 }
 
 /* Card Info Body */
@@ -582,7 +687,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background: var(--bg-card);
+  background: linear-gradient(180deg, rgba(31, 15, 58, 0.92) 0%, rgba(22, 12, 46, 0.98) 100%);
   z-index: 4;
 }
 
@@ -675,8 +780,8 @@ body {
 }
 
 .stat-pill {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-subtle);
+  background: linear-gradient(145deg, rgba(168, 85, 247, 0.14), rgba(253, 41, 123, 0.08));
+  border: 1px solid rgba(216, 180, 254, 0.22);
   border-radius: 12px;
   padding: 7px 8px;
   display: flex;
@@ -687,7 +792,8 @@ body {
 
 .stat-label {
   font-size: 0.68rem;
-  color: var(--text-subtle);
+  color: #e2e8f0;
+  opacity: 0.78;
   text-transform: uppercase;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -696,7 +802,7 @@ body {
 .stat-val {
   font-size: 0.92rem;
   font-weight: 800;
-  color: var(--text-main);
+  color: #ffffff;
 }
 
 /* Trait Pills */
@@ -713,9 +819,9 @@ body {
   font-weight: 700;
   padding: 4px 10px;
   border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text-muted);
+  background: rgba(168, 85, 247, 0.14);
+  border: 1px solid rgba(216, 180, 254, 0.2);
+  color: #f1f5f9;
 }
 
 .safety-pill.safe {

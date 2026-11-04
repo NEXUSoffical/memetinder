@@ -69,6 +69,14 @@ export class SwipeEngine {
     }
   }
 
+  private formatStatUsd(val: number): string {
+    if (!val || isNaN(val) || val <= 0) return '$0';
+    if (val >= 1e9) return `$${(val / 1e9).toFixed(2)}B`;
+    if (val >= 1e6) return `$${(val / 1e6).toFixed(2)}M`;
+    if (val >= 1e3) return `$${(val / 1e3).toFixed(1)}K`;
+    return `$${val.toFixed(0)}`;
+  }
+
   private createCardElement(coin: MemeCoin, stackIndex: number): HTMLElement {
     const card = document.createElement('div');
     card.className = `tinder-card stack-index-${stackIndex}`;
@@ -91,6 +99,8 @@ export class SwipeEngine {
       ? '<span class="safety-pill safe">🛡️ Safu 99%</span>'
       : '<span class="safety-pill warn">⚠️ Degen Meta</span>';
 
+    const fallbackImg = 'https://assets.coingecko.com/coins/images/29850/large/pepe-token.png';
+
     card.innerHTML = `
       <!-- Stamps -->
       <div class="card-stamp stamp-pass">PASS 💀</div>
@@ -99,7 +109,10 @@ export class SwipeEngine {
 
       <!-- Card Image / Avatar Banner -->
       <div class="card-media-wrapper">
-        <img class="card-avatar-img" src="${coin.avatar}" alt="${coin.name}" loading="lazy" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
+        <img class="card-media-bg" src="${coin.avatar}" alt="" aria-hidden="true" loading="lazy" onerror="this.src='${fallbackImg}'" />
+        <div class="card-avatar-ring">
+          <img class="card-avatar-img" src="${coin.avatar}" alt="${escapeHtml(coin.name)}" loading="lazy" onerror="this.src='${fallbackImg}'" />
+        </div>
         <div class="card-gradient-overlay"></div>
         <div class="card-chain-pill ${coin.chain}">${chainLabels[coin.chain] || coin.chain}</div>
         <div class="card-hype-badge">🔥 ${coin.hypeScore}% Hype</div>
@@ -125,15 +138,15 @@ export class SwipeEngine {
         <div class="card-stats-grid">
           <div class="stat-pill">
             <span class="stat-label">Market Cap</span>
-            <span class="stat-val">$${(coin.marketCap / 1e6).toFixed(1)}M</span>
+            <span class="stat-val">${this.formatStatUsd(coin.marketCap)}</span>
           </div>
           <div class="stat-pill">
             <span class="stat-label">24h Vol</span>
-            <span class="stat-val">$${(coin.volume24h / 1e6).toFixed(1)}M</span>
+            <span class="stat-val">${this.formatStatUsd(coin.volume24h)}</span>
           </div>
           <div class="stat-pill">
             <span class="stat-label">Liquidity</span>
-            <span class="stat-val">$${(coin.liquidityUsd / 1e6).toFixed(1)}M</span>
+            <span class="stat-val">${this.formatStatUsd(coin.liquidityUsd)}</span>
           </div>
         </div>
 
