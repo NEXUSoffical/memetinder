@@ -7,6 +7,25 @@ export class DexService {
   private static isFetching: boolean = false;
   private static readonly LAST_FIRST_KEY = 'memetinder_last_first_coin_v1';
   private static readonly SWIPED_IDS_KEY = 'memetinder_recent_swiped_v1';
+  private static readonly BOOSTED_COINS_KEY = 'memetinder_boosted_coins_v1';
+
+  public static saveBoostedCoin(coin: MemeCoin) {
+    try {
+      const raw = localStorage.getItem(this.BOOSTED_COINS_KEY);
+      const list: MemeCoin[] = raw ? JSON.parse(raw) : [];
+      const updated = [coin, ...list.filter(c => c.contractAddress !== coin.contractAddress)].slice(0, 10);
+      localStorage.setItem(this.BOOSTED_COINS_KEY, JSON.stringify(updated));
+    } catch {}
+  }
+
+  public static getBoostedCoins(): MemeCoin[] {
+    try {
+      const raw = localStorage.getItem(this.BOOSTED_COINS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
 
   /**
    * Fisher-Yates cryptographic/unbiased array shuffle
@@ -45,12 +64,15 @@ export class DexService {
     const shuffledLive = this.shuffleArray(liveCoins);
     const shuffledFallback = this.shuffleArray(fallbackCoins);
 
-    // Combine with live trending coins prioritized, keeping unseen coins before recently swiped ones
-    const combined = [...shuffledLive, ...shuffledFallback];
+    const boosted = this.getBoostedCoins();
+    const boostedAddrs = new Set(boosted.map(b => b.contractAddress));
+
+    // Combine with boosted coins first, then live trending coins prioritized, keeping unseen coins before recently swiped ones
+    const combined = [...shuffledLive, ...shuffledFallback].filter(c => !boostedAddrs.has(c.contractAddress));
     const unseen = combined.filter(c => !swipedIds.has(c.id));
     const seen = combined.filter(c => swipedIds.has(c.id));
 
-    const deck = [...unseen, ...seen];
+    const deck = [...boosted, ...unseen, ...seen];
 
     // Guarantee the first card is never the exact same coin as the previous page load
     if (deck.length > 1 && lastFirstId && deck[0].id === lastFirstId) {

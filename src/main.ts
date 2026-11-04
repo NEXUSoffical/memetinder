@@ -1006,6 +1006,124 @@ function bindActions() {
     });
   }
 
+  // Paid Coin Boost / Featured Listing Modal
+  const btnOpenBoostModal = document.getElementById('btnOpenBoostModal') as HTMLButtonElement | null;
+  const boostModalBackdrop = document.getElementById('boostModalBackdrop') as HTMLElement | null;
+  const btnCloseBoostModal = document.getElementById('btnCloseBoostModal') as HTMLButtonElement | null;
+  const inputBoostCa = document.getElementById('inputBoostCa') as HTMLInputElement | null;
+  const boostTierBtns = document.querySelectorAll('.boost-tier-btn');
+  const btnPayAndBoostCoin = document.getElementById('btnPayAndBoostCoin') as HTMLButtonElement | null;
+  const boostTxConfirmArea = document.getElementById('boostTxConfirmArea') as HTMLElement | null;
+
+  let selectedBoostSol = 0.35;
+  let selectedBoostLabel = '🔥 24h Super Match';
+
+  function openBoostModal() {
+    if (!boostModalBackdrop) return;
+    if (boostTxConfirmArea) boostTxConfirmArea.style.display = 'none';
+    document.body.classList.add('modal-active');
+    boostModalBackdrop.classList.add('active');
+    setTimeout(() => inputBoostCa?.focus(), 100);
+  }
+
+  function closeBoostModal() {
+    if (!boostModalBackdrop) return;
+    document.body.classList.remove('modal-active');
+    boostModalBackdrop.classList.remove('active');
+  }
+
+  if (btnOpenBoostModal) btnOpenBoostModal.addEventListener('click', openBoostModal);
+  if (btnCloseBoostModal) btnCloseBoostModal.addEventListener('click', closeBoostModal);
+  if (boostModalBackdrop) {
+    boostModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === boostModalBackdrop) closeBoostModal();
+    });
+  }
+
+  boostTierBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      boostTierBtns.forEach(b => {
+        b.classList.remove('active');
+        (b as HTMLElement).style.background = 'rgba(255,255,255,0.05)';
+        (b as HTMLElement).style.border = '1px solid var(--border-subtle)';
+      });
+      btn.classList.add('active');
+      (btn as HTMLElement).style.background = 'rgba(244, 63, 94, 0.16)';
+      (btn as HTMLElement).style.border = '1.5px solid #f43f5e';
+
+      selectedBoostSol = parseFloat(btn.getAttribute('data-tier-sol') || '0.35');
+      selectedBoostLabel = btn.getAttribute('data-tier-label') || '🔥 24h Super Match';
+      if (btnPayAndBoostCoin) {
+        btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Boost Token Now`;
+      }
+    });
+  });
+
+  if (btnPayAndBoostCoin) {
+    btnPayAndBoostCoin.addEventListener('click', async () => {
+      const ca = inputBoostCa?.value.trim() || '';
+      if (!ca) {
+        showToast('Please paste the Solana token Contract Address (CA) to boost!');
+        inputBoostCa?.focus();
+        return;
+      }
+
+      const wallet = WalletService.getState();
+      if (!wallet.isConnected) {
+        closeBoostModal();
+        openWalletModal();
+        showToast('Please connect your Solana wallet to boost your token!');
+        return;
+      }
+
+      btnPayAndBoostCoin.disabled = true;
+      btnPayAndBoostCoin.innerText = '🔍 Verifying token on DexScreener...';
+
+      const coin = await DexService.fetchTokenByAddress(ca);
+      if (!coin) {
+        btnPayAndBoostCoin.disabled = false;
+        btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Boost Token Now`;
+        showToast('Could not find token on DexScreener. Please check the CA!');
+        return;
+      }
+
+      btnPayAndBoostCoin.innerText = `⏳ Approve ${selectedBoostSol} SOL in Wallet...`;
+      const payRes = await JupiterService.executeBoostPayment(selectedBoostSol);
+
+      btnPayAndBoostCoin.disabled = false;
+      btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Boost Token Now`;
+
+      if (payRes.success && payRes.txHash) {
+        sound.playBuy();
+        coin.tagline = `${selectedBoostLabel} • Featured on MemeTinder`;
+        coin.traits = [selectedBoostLabel, '👑 Sponsored Gem', ...coin.traits.slice(0, 1)];
+        coin.hypeScore = 100;
+        coin.verified = true;
+
+        DexService.saveBoostedCoin(coin);
+        allCoins = [coin, ...allCoins.filter(c => c.contractAddress !== coin.contractAddress)];
+        if (swipeEngine) {
+          swipeEngine.setCoins(getFilteredCoins());
+        }
+
+        if (boostTxConfirmArea) {
+          boostTxConfirmArea.style.display = 'block';
+          boostTxConfirmArea.innerHTML = `
+            <div class="tx-confirmation-banner">
+              <span style="font-weight: 800; color: #10b981;">🎉 $${escapeHtml(coin.symbol)} is now BOOSTED to #1 on the Deck!</span>
+              <a class="tx-solscan-link" href="${payRes.solscanUrl}" target="_blank" rel="noopener">
+                View Boost Payment on Solscan ↗
+              </a>
+            </div>
+          `;
+        }
+        showToast(`👑 $${coin.symbol} is now Boosted & Featured at the top of the deck!`);
+      } else {
+        showToast(`⚠️ ${payRes.message}`, 4000);
+      }
+    });
+  }
+
   // Escape key closes modals
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -1014,6 +1132,7 @@ function bindActions() {
       closeMatchesModal();
       closeWalletModal();
       closeSearchModal();
+      closeBoostModal();
     }
   });
 }
