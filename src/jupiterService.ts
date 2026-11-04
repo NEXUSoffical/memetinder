@@ -200,6 +200,145 @@ export class JupiterService {
   }
 
   /**
+   * Executes a REAL 1-Click Sell (Token -> SOL) on Solana Mainnet via Jupiter & Connected Wallet
+   */
+  public static async executeSellToSol(coin: MemeCoin, sellPercent = 100): Promise<SwapResult> {
+    const wallet = WalletService.getState();
+    if (!wallet.isConnected || !wallet.publicKey) {
+      return {
+        success: false,
+        message: 'Please connect your Solana wallet first to sell tokens!'
+      };
+    }
+
+    const provider = WalletService.getProvider(wallet.providerType || 'phantom');
+    if (!provider) {
+      return { success: false, message: 'Wallet provider not found in browser.' };
+    }
+
+    try {
+      // 1. Query real on-chain SPL token balance in user's wallet
+      const tokenBal = await WalletService.getTokenBalance(coin.contractAddress);
+      const totalRaw = BigInt(tokenBal.rawAmount || '0');
+
+      if (totalRaw <= 0n) {
+        return {
+          success: false,
+          message: `You don't hold any $${coin.symbol} in your connected wallet yet!`
+        };
+      }
+
+      const sellRaw = sellPercent >= 100 ? totalRaw : (totalRaw * BigInt(sellPercent)) / 100n;
+      if (sellRaw <= 0n) {
+        return { success: false, message: 'Sell amount too small.' };
+      }
+
+      // 2. Fetch Jupiter Quote (Token -> SOL)
+      const quoteUrl = `https://api.jup.ag/swap/v1/quote?inputMint=${coin.contractAddress}&outputMint=${SOL_MINT}&amount=${sellRaw.toString()}&slippageBps=150`;
+      const quoteRes = await fetch(quoteUrl);
+      if (!quoteRes.ok) {
+        return { success: false, message: 'Could not fetch Jupiter sell route for this token.' };
+      }
+      const quoteData = await quoteRes.json();
+      if (!quoteData?.outAmount) {
+        return { success: false, message: 'No active SOL liquidity route found for selling.' };
+      }
+
+      const outLamports = Number(quoteData.outAmount || 0);
+      const solReceived = outLamports / 1e9;
+
+      // 3. Request serialized VersionedTransaction from Jupiter
+      const swapRes = await fetch('https://api.jup.ag/swap/v1/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPublicKey: wallet.publicKey,
+          quoteResponse: quoteData,
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: 'auto'
+        })
+      });
+
+      if (!swapRes.ok) {
+        const errText = await swapRes.text();
+        return { success: false, message: `Jupiter Sell error: ${errText.slice(0, 90)}` };
+      }
+
+      const { swapTransaction } = await swapRes.json();
+      if (!swapTransaction) {
+        return { success: false, message: 'Jupiter did not return a valid sell transaction.' };
+      }
+
+      const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+      const versionedTx = VersionedTransaction.deserialize(txBytes);
+
+      // 4. Bundle 0.8% SOL platform fee on Sell proceeds to TREASURY_WALLET
+      const feeLamports = Math.floor(outLamports * (PLATFORM_FEE_BPS / 10000));
+      if (feeLamports > 0 && wallet.publicKey !== TREASURY_WALLET) {
+        try {
+          const msg = versionedTx.message as any;
+          const treasuryPubkey = new PublicKey(TREASURY_WALLET);
+          const sysPubkey = SystemProgram.programId;
+          const sysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
+
+          if (sysIdx !== -1 && Array.isArray(msg.compiledInstructions)) {
+            let treasuryIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(treasuryPubkey));
+            if (treasuryIdx === -1) {
+              const insertIdx = msg.staticAccountKeys.length - msg.header.numReadonlyUnsignedAccounts;
+              msg.staticAccountKeys.splice(insertIdx, 0, treasuryPubkey);
+              for (const ix of msg.compiledInstructions) {
+                if (ix.programIdIndex >= insertIdx) ix.programIdIndex += 1;
+                ix.accountKeyIndexes = ix.accountKeyIndexes.map((idx: number) => idx >= insertIdx ? idx + 1 : idx);
+              }
+              treasuryIdx = insertIdx;
+            }
+
+            const finalSysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
+            const transferIx = SystemProgram.transfer({
+              fromPubkey: msg.staticAccountKeys[0],
+              toPubkey: treasuryPubkey,
+              lamports: feeLamports
+            });
+
+            msg.compiledInstructions.push({
+              programIdIndex: finalSysIdx,
+              accountKeyIndexes: [0, treasuryIdx],
+              data: Uint8Array.from(transferIx.data)
+            });
+          }
+        } catch (feeErr) {
+          console.warn('Skipping sell platform fee fallback:', feeErr);
+        }
+      }
+
+      // 5. Request wallet signature & broadcast on Solana Mainnet
+      const { signature } = await provider.signAndSendTransaction(versionedTx);
+      if (!signature) {
+        return { success: false, message: 'Wallet did not return a transaction signature.' };
+      }
+
+      PortfolioService.recordRealSell(coin, sellPercent, solReceived, signature);
+      WalletService.refreshBalance();
+
+      return {
+        success: true,
+        message: `💰 Sold ${sellPercent}% of $${coin.symbol} for ~${solReceived.toFixed(4)} SOL!`,
+        txHash: signature,
+        solscanUrl: `https://solscan.io/tx/${signature}`
+      };
+    } catch (err: any) {
+      if (err?.code === 4001 || (err?.message && err.message.includes('User rejected'))) {
+        return { success: false, message: 'Sell transaction cancelled in wallet.' };
+      }
+      return {
+        success: false,
+        message: err?.message || 'Sell transaction failed. Check slippage or network congestion.'
+      };
+    }
+  }
+
+  /**
    * Executes a real SOL payment to TREASURY_WALLET for featuring/boosting a coin on the MemeTinder deck
    */
   public static async executeBoostPayment(solAmount: number): Promise<SwapResult> {

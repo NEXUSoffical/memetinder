@@ -220,4 +220,67 @@ export class WalletService {
 
     return this.state.solBalance;
   }
+
+  /**
+   * Queries real on-chain SPL token balance for the connected wallet
+   */
+  public static async getTokenBalance(mintAddress: string): Promise<{ rawAmount: string; decimals: number; uiAmount: number }> {
+    if (!this.state.publicKey || !mintAddress) {
+      return { rawAmount: '0', decimals: 6, uiAmount: 0 };
+    }
+    const owner = this.state.publicKey;
+
+    try {
+      const res = await fetch('https://solana-rpc.publicnode.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'memetinder-tokbal',
+          method: 'getTokenAccountsByOwner',
+          params: [
+            owner,
+            { mint: mintAddress },
+            { encoding: 'jsonParsed', commitment: 'confirmed' }
+          ]
+        })
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const accounts = json?.result?.value;
+        if (Array.isArray(accounts)) {
+          let totalRaw = 0n;
+          let decimals = 6;
+          let uiAmount = 0;
+          for (const acc of accounts) {
+            const info = acc?.account?.data?.parsed?.info?.tokenAmount;
+            if (info) {
+              decimals = info.decimals ?? 6;
+              totalRaw += BigInt(info.amount || '0');
+              uiAmount += Number(info.uiAmount || 0);
+            }
+          }
+          return { rawAmount: totalRaw.toString(), decimals, uiAmount };
+        }
+      }
+    } catch {}
+
+    // Serverless fallback
+    try {
+      const apiRes = await fetch(`/api/token-balance?owner=${encodeURIComponent(owner)}&mint=${encodeURIComponent(mintAddress)}`);
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (data && typeof data.rawAmount === 'string') {
+          return {
+            rawAmount: data.rawAmount,
+            decimals: data.decimals ?? 6,
+            uiAmount: Number(data.uiAmount || 0)
+          };
+        }
+      }
+    } catch {}
+
+    return { rawAmount: '0', decimals: 6, uiAmount: 0 };
+  }
 }

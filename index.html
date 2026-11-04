@@ -323,13 +323,36 @@
 
   <!-- Matches & Portfolio Bag Modal -->
   <div class="modal-backdrop" id="matchesModalBackdrop">
-    <div class="modal-content-card">
+    <div class="modal-content-card" style="max-width: 480px;">
       <button class="modal-close-btn" id="btnCloseMatchesModal">✕</button>
       
-      <h2 class="matches-drawer-title">💼 My Swiped Gems</h2>
-      <p style="font-size: 0.85rem; color: var(--text-muted);">Meme coins you matched and swiped right on.</p>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; padding-right: 28px;">
+        <h2 class="matches-drawer-title" style="margin-bottom: 0;">💼 My Bag &amp; Live PnL</h2>
+        <div style="display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: #34d399; font-weight: 800;">
+          <span class="live-dot"></span>
+          <span id="bagLiveTickLabel">LIVE PNL</span>
+        </div>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Watch your coins' real-time Profit &amp; Loss and 1-click buy or sell back to SOL.</p>
 
-      <div class="matches-grid" id="matchesListContainer" style="margin-top: 14px;">
+      <!-- Live Portfolio PnL Summary Banner -->
+      <div id="bagSummaryCard" style="display: none; background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 16px; padding: 12px 14px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Total Bag Value (Est.)</div>
+            <div id="bagTotalValueUsd" style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 900; color: #f8fafc;">$0.00</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">Unrealized PnL</div>
+            <div id="bagTotalPnlBadge" style="font-family: monospace; font-size: 1.05rem; font-weight: 900; color: #34d399;">+$0.00 (0.00%)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- In-App Buy/Sell Tx Confirmation Banner -->
+      <div id="bagTxConfirmArea" style="display: none; margin-bottom: 12px;"></div>
+
+      <div class="matches-grid" id="matchesListContainer" style="margin-top: 8px; max-height: 58vh; overflow-y: auto;">
         <!-- Injected dynamically -->
       </div>
     </div>

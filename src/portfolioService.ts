@@ -44,9 +44,10 @@ export class PortfolioService {
    * Records a match when swiped right (ape) or up (superlike)
    */
   public static addMatch(coin: MemeCoin, action: 'ape' | 'superlike'): MatchRecord {
-    const existing = this.matches.find(m => m.coin.id === coin.id);
+    const existing = this.matches.find(m => m.coin.id === coin.id || m.coin.contractAddress === coin.contractAddress);
     if (existing) {
       existing.action = action;
+      if (!existing.boughtAtPrice) existing.boughtAtPrice = coin.priceUsd;
       this.save();
       return existing;
     }
@@ -54,7 +55,8 @@ export class PortfolioService {
     const record: MatchRecord = {
       coin,
       matchedAt: Date.now(),
-      action
+      action,
+      boughtAtPrice: coin.priceUsd
     };
     this.matches.unshift(record);
     this.save();
@@ -98,6 +100,35 @@ export class PortfolioService {
     }
 
     this.save();
+  }
+
+  /**
+   * Records a real on-chain sell back to SOL via Jupiter
+   */
+  public static recordRealSell(
+    coin: MemeCoin,
+    sellPercent: number,
+    solReceived: number,
+    txSignature: string
+  ) {
+    const ratioRemaining = Math.max(0, (100 - sellPercent) / 100);
+    const match = this.matches.find(m => m.coin.id === coin.id || m.coin.contractAddress === coin.contractAddress);
+    if (match) {
+      match.txSignature = txSignature;
+      if (match.tokensBought) match.tokensBought = match.tokensBought * ratioRemaining;
+      if (match.solSpent) match.solSpent = match.solSpent * ratioRemaining;
+    }
+
+    const holding = this.holdings.find(h => h.coinId === coin.id || h.contractAddress === coin.contractAddress);
+    if (holding) {
+      holding.tokensBought = holding.tokensBought * ratioRemaining;
+      holding.solSpent = holding.solSpent * ratioRemaining;
+      holding.lastTxSignature = txSignature;
+      holding.timestamp = Date.now();
+    }
+
+    this.save();
+    return solReceived;
   }
 
   public static removeMatch(coinId: string) {

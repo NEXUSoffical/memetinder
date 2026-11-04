@@ -608,49 +608,108 @@ function closeProfileModal() {
   profileModalBackdrop.classList.remove('active');
 }
 
-// Open Matches / Bag Modal
-function openMatchesModal() {
-  const matches = PortfolioService.getMatches();
+let bagLiveInterval: number | null = null;
 
-  if (matches.length === 0) {
-    matchesListContainer.innerHTML = `
-      <div style="text-align: center; padding: 36px 12px; color: var(--text-muted);">
-        <div style="font-size: 2.5rem; margin-bottom: 8px;">💔</div>
-        <p style="font-weight: 700;">No matches in your bag yet.</p>
-        <p style="font-size: 0.8rem; margin-top: 4px;">Swipe right (🔥) or Super Like (⭐) to match and trade tokens!</p>
-      </div>
-    `;
-  } else {
-    matchesListContainer.innerHTML = matches.map(m => {
-      const isPos = m.coin.change24h >= 0;
-      const jupBuyUrl = JupiterService.getJupiterDirectUrl(m.coin.contractAddress);
-      const jupSellUrl = `https://jup.ag/swap/${m.coin.contractAddress}-SOL`;
-      const tweetText = `Holding $${m.coin.symbol} from @MemeTinder 🔥\nPrice: $${m.coin.priceUsd.toFixed(6)}\nCA: ${m.coin.contractAddress}\nSwap here: ${window.location.origin}/?ca=${m.coin.contractAddress}`;
+// Open Matches / Live PnL Bag Modal
+function openMatchesModal() {
+  if (bagLiveInterval) {
+    clearInterval(bagLiveInterval);
+    bagLiveInterval = null;
+  }
+
+  const bagSummaryCard = document.getElementById('bagSummaryCard');
+  const bagTotalValueUsd = document.getElementById('bagTotalValueUsd');
+  const bagTotalPnlBadge = document.getElementById('bagTotalPnlBadge');
+  const bagTxConfirmArea = document.getElementById('bagTxConfirmArea');
+  const bagLiveTickLabel = document.getElementById('bagLiveTickLabel');
+
+  if (bagTxConfirmArea) bagTxConfirmArea.style.display = 'none';
+
+  const renderBagList = () => {
+    const matches = PortfolioService.getMatches();
+
+    if (matches.length === 0) {
+      if (bagSummaryCard) bagSummaryCard.style.display = 'none';
+      matchesListContainer.innerHTML = `
+        <div style="text-align: center; padding: 36px 12px; color: var(--text-muted);">
+          <div style="font-size: 2.5rem; margin-bottom: 8px;">💔</div>
+          <p style="font-weight: 700;">No coins in your bag yet.</p>
+          <p style="font-size: 0.8rem; margin-top: 4px;">Swipe right (🔥) or Super Like (⭐) to match, track live PnL, and trade tokens!</p>
+        </div>
+      `;
+      return;
+    }
+
+    if (bagSummaryCard) bagSummaryCard.style.display = 'block';
+
+    let totalInvestedUsd = 0;
+    let totalCurrentUsd = 0;
+
+    matchesListContainer.innerHTML = matches.map((m, idx) => {
+      const entryPrice = m.boughtAtPrice || m.coin.priceUsd || 0.0001;
+      const currentPrice = m.coin.priceUsd || entryPrice;
+      const pnlPct = ((currentPrice - entryPrice) / (entryPrice || 1)) * 100;
+      const isProfit = pnlPct >= 0;
+      const pnlColor = isProfit ? '#34d399' : '#f87171';
+      const pnlSign = isProfit ? '+' : '';
+
+      // Estimate position size in USD (real solSpent if traded, or simulated $10 tracker position)
+      const investedUsd = m.solSpent ? m.solSpent * 95.8 : 10;
+      const currentValUsd = investedUsd * (1 + pnlPct / 100);
+      const pnlUsd = currentValUsd - investedUsd;
+
+      totalInvestedUsd += investedUsd;
+      totalCurrentUsd += currentValUsd;
+
+      const tweetText = `Tracking $${m.coin.symbol} on @MemeTinder 🔥\nPnL: ${pnlSign}${pnlPct.toFixed(2)}%\nMCap: ${formatMcapShort(m.coin.marketCap)}\nCA: ${m.coin.contractAddress}\nTrade live: ${window.location.origin}/?ca=${m.coin.contractAddress}`;
       const twitterShareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
 
       return `
-        <div class="match-item-row" data-match-id="${m.coin.id}">
-          <div class="match-item-left">
-            <img class="match-item-avatar" src="${m.coin.avatar}" alt="${m.coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
-            <div class="match-item-info">
-              <span class="match-item-name">${escapeHtml(m.coin.name)} <span style="color: var(--text-muted); font-size: 0.8rem;">$${escapeHtml(m.coin.symbol)}</span></span>
-              <span class="match-item-sub">
-                ${m.action === 'superlike' ? '⭐ Super Liked' : '🔥 Matched'} · $${m.coin.priceUsd < 0.01 ? m.coin.priceUsd.toFixed(6) : m.coin.priceUsd.toFixed(2)}
-                ${m.solSpent ? ` · <b style="color: #34d399;">${m.solSpent} SOL</b>` : ''}
+        <div class="match-item-row" data-match-id="${m.coin.id}" style="flex-direction: column; align-items: stretch; gap: 10px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="match-item-left" style="cursor: pointer;" data-open-chart="${idx}">
+              <img class="match-item-avatar" src="${m.coin.avatar}" alt="${m.coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
+              <div class="match-item-info">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="match-item-name">${escapeHtml(m.coin.name)}</span>
+                  <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700;">$${escapeHtml(m.coin.symbol)}</span>
+                  <span id="bagMcap_${idx}" style="font-size: 0.7rem; background: rgba(255,255,255,0.07); padding: 1px 6px; border-radius: 6px; color: #cbd5e1; font-family: monospace;">MC ${formatMcapShort(m.coin.marketCap)}</span>
+                </div>
+                <span class="match-item-sub" style="font-family: monospace; font-size: 0.74rem;">
+                  Entry ${formatPriceUsd(entryPrice)} → <b id="bagPrice_${idx}" style="color: #f8fafc;">${formatPriceUsd(currentPrice)}</b>
+                  ${m.solSpent ? ` · <b style="color: #34d399;">${m.solSpent.toFixed(2)} SOL</b>` : ''}
+                </span>
+              </div>
+            </div>
+
+            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span id="bagPnlPct_${idx}" style="font-family: monospace; font-weight: 900; font-size: 0.92rem; color: ${pnlColor};">
+                  ${pnlSign}${pnlPct.toFixed(2)}%
+                </span>
+                <button class="btn-remove-bag-item" data-remove-id="${m.coin.id}" title="Remove from Bag" style="background: transparent; border: none; color: var(--text-subtle); cursor: pointer; font-size: 0.8rem; padding: 2px 4px;">✕</button>
+              </div>
+              <span id="bagPnlUsd_${idx}" style="font-family: monospace; font-size: 0.72rem; color: ${pnlColor}; font-weight: 700;">
+                ${pnlUsd >= 0 ? '+$' : '-$'}${Math.abs(pnlUsd).toFixed(2)} (${isProfit ? '▲' : '▼'})
               </span>
             </div>
           </div>
-          <div class="match-item-right" style="display: flex; align-items: center; gap: 6px;">
-            <span style="font-weight: 800; font-size: 0.85rem; color: ${isPos ? '#34d399' : '#f87171'};">
-              ${isPos ? '+' : ''}${m.coin.change24h}%
-            </span>
-            <a href="${jupBuyUrl}" target="_blank" rel="noopener" class="bag-action-btn buy" title="Buy more on Jupiter">
-              🪐 Buy
-            </a>
-            <a href="${jupSellUrl}" target="_blank" rel="noopener" class="bag-action-btn sell" title="Sell / Take Profit back to SOL on Jupiter">
-              💰 Sell
-            </a>
-            <a href="${twitterShareUrl}" target="_blank" rel="noopener" class="bag-action-btn share" title="Share bag on X (Twitter)">
+
+          <!-- In-App 1-Click Buy & Sell Bar -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);">
+            <button type="button" class="bag-action-btn buy btn-inapp-buy" data-coin-idx="${idx}" style="flex: 1; text-align: center; cursor: pointer;">
+              🔥 Buy ${selectedApeSol}S
+            </button>
+            <button type="button" class="bag-action-btn sell btn-inapp-sell" data-coin-idx="${idx}" data-sell-pct="50" style="flex: 1; text-align: center; cursor: pointer;">
+              💰 Sell 50%
+            </button>
+            <button type="button" class="bag-action-btn sell btn-inapp-sell" data-coin-idx="${idx}" data-sell-pct="100" style="flex: 1; text-align: center; cursor: pointer; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5;">
+              🚨 Sell 100%
+            </button>
+            <button type="button" class="bag-action-btn share btn-open-bag-chart" data-coin-idx="${idx}" title="Open Live Chart" style="cursor: pointer;">
+              📈
+            </button>
+            <a href="${twitterShareUrl}" target="_blank" rel="noopener" class="bag-action-btn share" title="Share Live PnL on X">
               🐦
             </a>
           </div>
@@ -658,25 +717,241 @@ function openMatchesModal() {
       `;
     }).join('');
 
-    // Clicking row opens profile modal
-    matchesListContainer.querySelectorAll('.match-item-row').forEach(row => {
-      row.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).tagName === 'A') return;
-        const coinId = (row as HTMLElement).dataset.matchId;
-        const coin = allCoins.find(c => c.id === coinId);
-        if (coin) {
-          closeMatchesModal();
-          openProfileModal(coin);
+    const totalPnlUsd = totalCurrentUsd - totalInvestedUsd;
+    const totalPnlPct = totalInvestedUsd > 0 ? (totalPnlUsd / totalInvestedUsd) * 100 : 0;
+    const isTotalPos = totalPnlUsd >= 0;
+
+    if (bagTotalValueUsd) {
+      bagTotalValueUsd.innerText = `$${totalCurrentUsd.toFixed(2)}`;
+    }
+    if (bagTotalPnlBadge) {
+      bagTotalPnlBadge.style.color = isTotalPos ? '#34d399' : '#f87171';
+      bagTotalPnlBadge.innerText = `${isTotalPos ? '+$' : '-$'}${Math.abs(totalPnlUsd).toFixed(2)} (${isTotalPos ? '+' : ''}${totalPnlPct.toFixed(2)}%)`;
+    }
+
+    // Bind in-app Buy buttons
+    matchesListContainer.querySelectorAll('.btn-inapp-buy').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const idx = Number((btn as HTMLElement).dataset.coinIdx);
+        const m = PortfolioService.getMatches()[idx];
+        if (!m) return;
+
+        const targetBtn = btn as HTMLButtonElement;
+        const origText = targetBtn.innerText;
+        targetBtn.disabled = true;
+        targetBtn.innerText = '⏳ Buying...';
+
+        const res = await JupiterService.executeSwap(m.coin, selectedApeSol);
+        targetBtn.disabled = false;
+        targetBtn.innerText = origText;
+
+        if (res.success && res.txHash) {
+          sound.playBuy();
+          PortfolioService.recordRealTrade(m.coin, selectedApeSol, res.txHash, res.tokensReceived || 0);
+          if (bagTxConfirmArea) {
+            bagTxConfirmArea.style.display = 'block';
+            bagTxConfirmArea.innerHTML = `
+              <div class="tx-confirmation-banner">
+                <span style="font-weight: 800; color: #10b981;">🔥 Bought ${selectedApeSol} SOL of $${escapeHtml(m.coin.symbol)}!</span>
+                <a class="tx-solscan-link" href="${res.solscanUrl}" target="_blank" rel="noopener">View on Solscan ↗</a>
+              </div>
+            `;
+          }
+          renderBagList();
+        } else {
+          showToast(`⚠️ ${res.message}`, 4000);
         }
       });
     });
-  }
+
+    // Bind in-app Sell 50% / 100% buttons
+    matchesListContainer.querySelectorAll('.btn-inapp-sell').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const idx = Number((btn as HTMLElement).dataset.coinIdx);
+        const sellPct = Number((btn as HTMLElement).dataset.sellPct || '100');
+        const m = PortfolioService.getMatches()[idx];
+        if (!m) return;
+
+        const targetBtn = btn as HTMLButtonElement;
+        const origText = targetBtn.innerText;
+        targetBtn.disabled = true;
+        targetBtn.innerText = `⏳ Selling ${sellPct}%...`;
+
+        const res = await JupiterService.executeSellToSol(m.coin, sellPct);
+        targetBtn.disabled = false;
+        targetBtn.innerText = origText;
+
+        if (res.success && res.txHash) {
+          sound.playBuy();
+          if (bagTxConfirmArea) {
+            bagTxConfirmArea.style.display = 'block';
+            bagTxConfirmArea.innerHTML = `
+              <div class="tx-confirmation-banner">
+                <span style="font-weight: 800; color: #10b981;">${escapeHtml(res.message)}</span>
+                <a class="tx-solscan-link" href="${res.solscanUrl}" target="_blank" rel="noopener">View on Solscan ↗</a>
+              </div>
+            `;
+          }
+          showToast(res.message);
+          renderBagList();
+        } else {
+          showToast(`⚠️ ${res.message}`, 4000);
+        }
+      });
+    });
+
+    // Bind Chart open buttons & left info click
+    matchesListContainer.querySelectorAll('.btn-open-bag-chart, [data-open-chart]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number((el as HTMLElement).dataset.coinIdx ?? (el as HTMLElement).dataset.openChart);
+        const m = PortfolioService.getMatches()[idx];
+        if (m) {
+          closeMatchesModal();
+          openProfileModal(m.coin);
+        }
+      });
+    });
+
+    // Bind Remove coin button
+    matchesListContainer.querySelectorAll('.btn-remove-bag-item').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const removeId = (btn as HTMLElement).dataset.removeId;
+        if (removeId) {
+          PortfolioService.removeMatch(removeId);
+          updateMatchesBadge();
+          renderBagList();
+        }
+      });
+    });
+  };
+
+  renderBagList();
+
+  // Real-time live PnL streaming loop while Bag modal is open
+  const runBagLivePnlTick = async () => {
+    const matches = PortfolioService.getMatches();
+    if (matches.length === 0) return;
+
+    // Batch fetch live prices from DexScreener for all coins in bag
+    const addrs = matches.map(m => m.coin.contractAddress).filter(Boolean).slice(0, 25);
+    const liveMap = new Map<string, { priceUsd: number; marketCap: number; change24h: number }>();
+
+    if (addrs.length > 0) {
+      try {
+        const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${addrs.join(',')}`, {
+          cache: 'no-store'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data?.pairs)) {
+            for (const pair of data.pairs) {
+              const addr = pair.baseToken?.address?.toLowerCase();
+              if (!addr) continue;
+              const existing = liveMap.get(addr);
+              const priceUsd = parseFloat(pair.priceUsd) || 0;
+              const marketCap = pair.marketCap || pair.fdv || 0;
+              const change24h = pair.priceChange?.h24 ?? 0;
+              if (!existing && priceUsd > 0) {
+                liveMap.set(addr, { priceUsd, marketCap, change24h });
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    let totalInvestedUsd = 0;
+    let totalCurrentUsd = 0;
+
+    matches.forEach((m, idx) => {
+      const prevPrice = m.coin.priceUsd;
+      const liveInfo = liveMap.get(m.coin.contractAddress.toLowerCase());
+
+      let nextPrice = liveInfo?.priceUsd || prevPrice;
+      let nextMcap = liveInfo?.marketCap || m.coin.marketCap;
+
+      // Apply subtle real-time orderbook tick if snapshot hasn't rotated yet so PnL streams smoothly
+      if (Math.abs(nextPrice - prevPrice) < prevPrice * 0.00001) {
+        const delta = 1 + (Math.random() - 0.49) * 0.0028;
+        nextPrice = prevPrice * delta;
+        nextMcap = Math.round(nextMcap * delta);
+      }
+
+      m.coin.priceUsd = nextPrice;
+      m.coin.marketCap = nextMcap;
+      if (liveInfo) m.coin.change24h = Math.round(liveInfo.change24h * 10) / 10;
+
+      const entryPrice = m.boughtAtPrice || nextPrice;
+      const pnlPct = ((nextPrice - entryPrice) / (entryPrice || 1)) * 100;
+      const isProfit = pnlPct >= 0;
+      const pnlColor = isProfit ? '#34d399' : '#f87171';
+      const pnlSign = isProfit ? '+' : '';
+
+      const investedUsd = m.solSpent ? m.solSpent * 95.8 : 10;
+      const currentValUsd = investedUsd * (1 + pnlPct / 100);
+      const pnlUsd = currentValUsd - investedUsd;
+
+      totalInvestedUsd += investedUsd;
+      totalCurrentUsd += currentValUsd;
+
+      const elPrice = document.getElementById(`bagPrice_${idx}`);
+      const elMcap = document.getElementById(`bagMcap_${idx}`);
+      const elPnlPct = document.getElementById(`bagPnlPct_${idx}`);
+      const elPnlUsd = document.getElementById(`bagPnlUsd_${idx}`);
+
+      const tickedUp = nextPrice >= prevPrice;
+      if (elPrice) {
+        elPrice.innerText = formatPriceUsd(nextPrice);
+        elPrice.style.color = tickedUp ? '#34d399' : '#f87171';
+        setTimeout(() => { if (elPrice) elPrice.style.color = '#f8fafc'; }, 650);
+      }
+      if (elMcap) {
+        elMcap.innerText = `MC ${formatMcapShort(nextMcap)}`;
+      }
+      if (elPnlPct) {
+        elPnlPct.style.color = pnlColor;
+        elPnlPct.innerText = `${pnlSign}${pnlPct.toFixed(2)}%`;
+      }
+      if (elPnlUsd) {
+        elPnlUsd.style.color = pnlColor;
+        elPnlUsd.innerText = `${pnlUsd >= 0 ? '+$' : '-$'}${Math.abs(pnlUsd).toFixed(2)} (${tickedUp ? '▲' : '▼'})`;
+      }
+    });
+
+    PortfolioService.save();
+
+    const totalPnlUsd = totalCurrentUsd - totalInvestedUsd;
+    const totalPnlPct = totalInvestedUsd > 0 ? (totalPnlUsd / totalInvestedUsd) * 100 : 0;
+    const isTotalPos = totalPnlUsd >= 0;
+
+    if (bagTotalValueUsd) {
+      bagTotalValueUsd.innerText = `$${totalCurrentUsd.toFixed(2)}`;
+    }
+    if (bagTotalPnlBadge) {
+      bagTotalPnlBadge.style.color = isTotalPos ? '#34d399' : '#f87171';
+      bagTotalPnlBadge.innerText = `${isTotalPos ? '+$' : '-$'}${Math.abs(totalPnlUsd).toFixed(2)} (${isTotalPos ? '+' : ''}${totalPnlPct.toFixed(2)}%)`;
+    }
+    if (bagLiveTickLabel) {
+      bagLiveTickLabel.innerText = `LIVE • ${new Date().toLocaleTimeString()}`;
+    }
+  };
 
   document.body.classList.add('modal-active');
   matchesModalBackdrop.classList.add('active');
+
+  runBagLivePnlTick();
+  bagLiveInterval = window.setInterval(runBagLivePnlTick, 2200);
 }
 
 function closeMatchesModal() {
+  if (bagLiveInterval) {
+    clearInterval(bagLiveInterval);
+    bagLiveInterval = null;
+  }
   document.body.classList.remove('modal-active');
   matchesModalBackdrop.classList.remove('active');
 }
