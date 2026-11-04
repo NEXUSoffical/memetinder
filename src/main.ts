@@ -325,7 +325,6 @@ function openProfileModal(coin: MemeCoin) {
   }
 
   let liveSeries = [...(coin.sparkline && coin.sparkline.length > 1 ? coin.sparkline : [coin.priceUsd * 0.96, coin.priceUsd * 0.98, coin.priceUsd])];
-  let baselineJupTokens: number | null = null;
   let baselineDexPrice = coin.priceUsd;
   let baselineDexMcap = coin.marketCap;
 
@@ -442,13 +441,35 @@ function openProfileModal(coin: MemeCoin) {
     });
   }
 
-  const btnProfileQuickApe = document.getElementById('btnProfileQuickApe');
+  const btnProfileQuickApe = document.getElementById('btnProfileQuickApe') as HTMLButtonElement | null;
   if (btnProfileQuickApe) {
-    btnProfileQuickApe.addEventListener('click', () => {
-      closeProfileModal();
-      PortfolioService.addMatch(coin, 'ape');
-      updateMatchesBadge();
-      triggerMatchModal(coin, false);
+    btnProfileQuickApe.addEventListener('click', async () => {
+      const wallet = WalletService.getState();
+      if (!wallet.isConnected) {
+        closeProfileModal();
+        PortfolioService.addMatch(coin, 'ape');
+        updateMatchesBadge();
+        triggerMatchModal(coin, false);
+        return;
+      }
+
+      const origText = btnProfileQuickApe.innerText;
+      btnProfileQuickApe.disabled = true;
+      btnProfileQuickApe.innerText = '⏳ Confirm in Phantom...';
+
+      const res = await JupiterService.executeSwap(coin, selectedApeSol);
+      btnProfileQuickApe.disabled = false;
+
+      if (res.success && res.txHash) {
+        sound.playBuy();
+        PortfolioService.recordRealTrade(coin, selectedApeSol, res.txHash, res.tokensReceived || 0);
+        updateMatchesBadge();
+        btnProfileQuickApe.innerText = '✓ Bought in Wallet!';
+        showToast(`🚀 Bought ${selectedApeSol} SOL of $${coin.symbol} on Solana Mainnet!`);
+      } else {
+        btnProfileQuickApe.innerText = origText;
+        showToast(`⚠️ ${res.message}`, 4000);
+      }
     });
   }
 
@@ -488,12 +509,9 @@ function openProfileModal(coin: MemeCoin) {
     });
   }
 
-  // Real-time live polling loop (DexScreener pair feed + live Jupiter AMM reserve quote)
+  // Real-time live polling loop (DexScreener pair feed without burning Jupiter swap rate-limit)
   const runLiveTick = async () => {
-    const [dexData, jupQuote] = await Promise.all([
-      DexService.fetchLiveMetrics(coin.contractAddress),
-      JupiterService.getQuote(coin.contractAddress, 0.1)
-    ]);
+    const dexData = await DexService.fetchLiveMetrics(coin.contractAddress);
 
     const prevPrice = coin.priceUsd;
     const prevMcap = coin.marketCap;
@@ -508,19 +526,6 @@ function openProfileModal(coin: MemeCoin) {
 
     let nextPrice = baselineDexPrice;
     let nextMcap = baselineDexMcap;
-
-    // Incorporate live on-chain AMM pool movement from Jupiter quote
-    if (jupQuote && jupQuote.outAmountTokens > 0) {
-      if (!baselineJupTokens) {
-        baselineJupTokens = jupQuote.outAmountTokens;
-      } else {
-        const poolRatio = baselineJupTokens / jupQuote.outAmountTokens;
-        if (poolRatio > 0.5 && poolRatio < 2.0) {
-          nextPrice = baselineDexPrice * poolRatio;
-          nextMcap = baselineDexMcap * poolRatio;
-        }
-      }
-    }
 
     // Apply subtle real-time orderflow jitter if pool snapshot is identical between 2s blocks so chart stays alive
     if (Math.abs(nextPrice - prevPrice) < prevPrice * 0.00001) {
@@ -625,6 +630,38 @@ function openMatchesModal() {
 
   if (bagTxConfirmArea) bagTxConfirmArea.style.display = 'none';
 
+  const onChainBalances = new Map<string, number>();
+
+  const syncWalletBalancesForBag = async () => {
+    const wallet = WalletService.getState();
+    if (!wallet.isConnected || !wallet.publicKey) return;
+    const matches = PortfolioService.getMatches();
+    await Promise.all(
+      matches.slice(0, 12).map(async (m, idx) => {
+        if (!m.coin.contractAddress) return;
+        const bal = await WalletService.getTokenBalance(m.coin.contractAddress);
+        onChainBalances.set(m.coin.contractAddress, bal.uiAmount || 0);
+        const elHoldBadge = document.getElementById(`bagHoldBadge_${idx}`);
+        if (elHoldBadge) {
+          if (bal.uiAmount > 0) {
+            const fmtBal = bal.uiAmount > 1000
+              ? bal.uiAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+              : bal.uiAmount.toFixed(2);
+            elHoldBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+            elHoldBadge.style.borderColor = 'rgba(16, 185, 129, 0.45)';
+            elHoldBadge.style.color = '#6ee7b7';
+            elHoldBadge.innerText = `🟢 In Phantom: ${fmtBal} $${m.coin.symbol}`;
+          } else if (!m.solSpent) {
+            elHoldBadge.style.background = 'rgba(245, 158, 11, 0.16)';
+            elHoldBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+            elHoldBadge.style.color = '#fcd34d';
+            elHoldBadge.innerText = `👀 Watchlist (Not Bought in Phantom Yet)`;
+          }
+        }
+      })
+    );
+  };
+
   const renderBagList = () => {
     const matches = PortfolioService.getMatches();
 
@@ -653,13 +690,26 @@ function openMatchesModal() {
       const pnlColor = isProfit ? '#34d399' : '#f87171';
       const pnlSign = isProfit ? '+' : '';
 
-      // Estimate position size in USD (real solSpent if traded, or simulated $10 tracker position)
-      const investedUsd = m.solSpent ? m.solSpent * 95.8 : 10;
-      const currentValUsd = investedUsd * (1 + pnlPct / 100);
+      const walletTokens = onChainBalances.get(m.coin.contractAddress) || 0;
+      const hasRealPurchase = Boolean((m.solSpent && m.solSpent > 0) || walletTokens > 0);
+
+      // Only count real purchased SOL/tokens toward USD portfolio balance (never fake $10 for watchlisted coins)
+      const investedUsd = m.solSpent && m.solSpent > 0
+        ? m.solSpent * 95.8
+        : walletTokens > 0
+          ? walletTokens * entryPrice
+          : 0;
+      const currentValUsd = walletTokens > 0
+        ? walletTokens * currentPrice
+        : investedUsd * (1 + pnlPct / 100);
       const pnlUsd = currentValUsd - investedUsd;
 
       totalInvestedUsd += investedUsd;
       totalCurrentUsd += currentValUsd;
+
+      const statusBadgeHtml = hasRealPurchase
+        ? `<span id="bagHoldBadge_${idx}" style="font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.45); color: #6ee7b7;">🟢 Owned (${m.solSpent ? `${m.solSpent.toFixed(2)} SOL` : 'In Wallet'})</span>`
+        : `<span id="bagHoldBadge_${idx}" style="font-size: 0.68rem; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(245, 158, 11, 0.16); border: 1px solid rgba(245, 158, 11, 0.4); color: #fcd34d;">👀 Watchlist (Not Bought Yet)</span>`;
 
       const tweetText = `Tracking $${m.coin.symbol} on @MemeTinder 🔥\nPnL: ${pnlSign}${pnlPct.toFixed(2)}%\nMCap: ${formatMcapShort(m.coin.marketCap)}\nCA: ${m.coin.contractAddress}\nTrade live: ${window.location.origin}/?ca=${m.coin.contractAddress}`;
       const twitterShareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
@@ -670,14 +720,14 @@ function openMatchesModal() {
             <div class="match-item-left" style="cursor: pointer;" data-open-chart="${idx}">
               <img class="match-item-avatar" src="${m.coin.avatar}" alt="${m.coin.name}" onerror="this.src='https://assets.coingecko.com/coins/images/29850/large/pepe-token.png'" />
               <div class="match-item-info">
-                <div style="display: flex; align-items: center; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                   <span class="match-item-name">${escapeHtml(m.coin.name)}</span>
                   <span style="color: var(--text-muted); font-size: 0.78rem; font-weight: 700;">$${escapeHtml(m.coin.symbol)}</span>
                   <span id="bagMcap_${idx}" style="font-size: 0.7rem; background: rgba(255,255,255,0.07); padding: 1px 6px; border-radius: 6px; color: #cbd5e1; font-family: monospace;">MC ${formatMcapShort(m.coin.marketCap)}</span>
                 </div>
-                <span class="match-item-sub" style="font-family: monospace; font-size: 0.74rem;">
+                <div style="margin-top: 3px;">${statusBadgeHtml}</div>
+                <span class="match-item-sub" style="font-family: monospace; font-size: 0.74rem; margin-top: 2px;">
                   Entry ${formatPriceUsd(entryPrice)} → <b id="bagPrice_${idx}" style="color: #f8fafc;">${formatPriceUsd(currentPrice)}</b>
-                  ${m.solSpent ? ` · <b style="color: #34d399;">${m.solSpent.toFixed(2)} SOL</b>` : ''}
                 </span>
               </div>
             </div>
@@ -689,8 +739,8 @@ function openMatchesModal() {
                 </span>
                 <button class="btn-remove-bag-item" data-remove-id="${m.coin.id}" title="Remove from Bag" style="background: transparent; border: none; color: var(--text-subtle); cursor: pointer; font-size: 0.8rem; padding: 2px 4px;">✕</button>
               </div>
-              <span id="bagPnlUsd_${idx}" style="font-family: monospace; font-size: 0.72rem; color: ${pnlColor}; font-weight: 700;">
-                ${pnlUsd >= 0 ? '+$' : '-$'}${Math.abs(pnlUsd).toFixed(2)} (${isProfit ? '▲' : '▼'})
+              <span id="bagPnlUsd_${idx}" style="font-family: monospace; font-size: 0.72rem; color: ${hasRealPurchase ? pnlColor : 'var(--text-subtle)'}; font-weight: 700;">
+                ${hasRealPurchase ? `${pnlUsd >= 0 ? '+$' : '-$'}${Math.abs(pnlUsd).toFixed(2)} (${isProfit ? '▲' : '▼'})` : '$0.00 Owned'}
               </span>
             </div>
           </div>
@@ -827,6 +877,7 @@ function openMatchesModal() {
         }
       });
     });
+    syncWalletBalancesForBag();
   };
 
   renderBagList();
@@ -891,8 +942,17 @@ function openMatchesModal() {
       const pnlColor = isProfit ? '#34d399' : '#f87171';
       const pnlSign = isProfit ? '+' : '';
 
-      const investedUsd = m.solSpent ? m.solSpent * 95.8 : 10;
-      const currentValUsd = investedUsd * (1 + pnlPct / 100);
+      const walletTokens = onChainBalances.get(m.coin.contractAddress) || 0;
+      const hasRealPurchase = Boolean((m.solSpent && m.solSpent > 0) || walletTokens > 0);
+
+      const investedUsd = m.solSpent && m.solSpent > 0
+        ? m.solSpent * 95.8
+        : walletTokens > 0
+          ? walletTokens * entryPrice
+          : 0;
+      const currentValUsd = walletTokens > 0
+        ? walletTokens * nextPrice
+        : investedUsd * (1 + pnlPct / 100);
       const pnlUsd = currentValUsd - investedUsd;
 
       totalInvestedUsd += investedUsd;
@@ -917,8 +977,13 @@ function openMatchesModal() {
         elPnlPct.innerText = `${pnlSign}${pnlPct.toFixed(2)}%`;
       }
       if (elPnlUsd) {
-        elPnlUsd.style.color = pnlColor;
-        elPnlUsd.innerText = `${pnlUsd >= 0 ? '+$' : '-$'}${Math.abs(pnlUsd).toFixed(2)} (${tickedUp ? '▲' : '▼'})`;
+        if (hasRealPurchase) {
+          elPnlUsd.style.color = pnlColor;
+          elPnlUsd.innerText = `${pnlUsd >= 0 ? '+$' : '-$'}${Math.abs(pnlUsd).toFixed(2)} (${tickedUp ? '▲' : '▼'})`;
+        } else {
+          elPnlUsd.style.color = 'var(--text-subtle)';
+          elPnlUsd.innerText = '$0.00 Owned';
+        }
       }
     });
 
@@ -1015,8 +1080,9 @@ function initSwipeController() {
           // AUTO-APE MODE: Instant real swap via wallet!
           showToast(`⚡ Auto-Aping ${selectedApeSol} SOL into $${coin.symbol}...`);
           const res = await JupiterService.executeSwap(coin, selectedApeSol);
-          if (res.success) {
+          if (res.success && res.txHash) {
             sound.playBuy();
+            PortfolioService.recordRealTrade(coin, selectedApeSol, res.txHash, res.tokensReceived || 0);
             updateMatchesBadge();
             showToast(`🎉 Swap broadcasted on Solana Mainnet!`);
           } else {

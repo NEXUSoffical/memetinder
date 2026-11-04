@@ -25,38 +25,100 @@ export interface SwapResult {
 }
 
 export class JupiterService {
+  private static readonly JUP_ENDPOINTS = [
+    'https://lite-api.jup.ag/swap/v1',
+    'https://api.jup.ag/swap/v1'
+  ];
+
   /**
-   * Fetches real live quote from Jupiter V1 Aggregator API
+   * Safely appends the 0.8% platform fee instruction and bumps ComputeUnitLimit so it never fails on-chain
    */
-  public static async getQuote(tokenMint: string, solAmount: number, slippageBps = 100): Promise<JupiterQuote | null> {
+  private static attachPlatformFeeInstruction(versionedTx: VersionedTransaction, feeLamports: number, userPubkey: string) {
+    if (feeLamports <= 0 || userPubkey === TREASURY_WALLET) return;
+    try {
+      const msg = versionedTx.message as any;
+      const treasuryPubkey = new PublicKey(TREASURY_WALLET);
+      const sysPubkey = SystemProgram.programId;
+      const computeBudgetPubkey = new PublicKey('ComputeBudget111111111111111111111111111111');
+      const sysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
+
+      if (sysIdx !== -1 && Array.isArray(msg.compiledInstructions)) {
+        // Bump SetComputeUnitLimit (ix discriminator 0x02) by +20,000 CU so extra transfer never hits CU cap
+        const cbIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(computeBudgetPubkey));
+        if (cbIdx !== -1) {
+          for (const ix of msg.compiledInstructions) {
+            if (ix.programIdIndex === cbIdx && ix.data && ix.data.length === 5 && ix.data[0] === 2) {
+              const view = new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength);
+              const currentUnits = view.getUint32(1, true);
+              view.setUint32(1, currentUnits + 20000, true);
+            }
+          }
+        }
+
+        let treasuryIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(treasuryPubkey));
+        if (treasuryIdx === -1) {
+          const insertIdx = msg.staticAccountKeys.length - msg.header.numReadonlyUnsignedAccounts;
+          msg.staticAccountKeys.splice(insertIdx, 0, treasuryPubkey);
+          for (const ix of msg.compiledInstructions) {
+            if (ix.programIdIndex >= insertIdx) ix.programIdIndex += 1;
+            ix.accountKeyIndexes = ix.accountKeyIndexes.map((idx: number) => idx >= insertIdx ? idx + 1 : idx);
+          }
+          treasuryIdx = insertIdx;
+        }
+
+        const finalSysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
+        const transferIx = SystemProgram.transfer({
+          fromPubkey: msg.staticAccountKeys[0],
+          toPubkey: treasuryPubkey,
+          lamports: feeLamports
+        });
+
+        msg.compiledInstructions.push({
+          programIdIndex: finalSysIdx,
+          accountKeyIndexes: [0, treasuryIdx],
+          data: Uint8Array.from(transferIx.data)
+        });
+      }
+    } catch (feeErr) {
+      console.warn('Skipping platform fee instruction fallback:', feeErr);
+    }
+  }
+
+  /**
+   * Fetches real live quote from Jupiter V1 Aggregator API with multi-endpoint fallback
+   */
+  public static async getQuote(tokenMint: string, solAmount: number, slippageBps = 250): Promise<JupiterQuote | null> {
+    if (tokenMint === SOL_MINT) return null;
     const netSolAmount = solAmount * (1 - PLATFORM_FEE_BPS / 10000);
     const lamports = Math.max(1000, Math.round(netSolAmount * 1e9));
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4500);
+    for (const baseUrl of this.JUP_ENDPOINTS) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4500);
 
-      const url = `https://api.jup.ag/swap/v1/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${lamports}&slippageBps=${slippageBps}`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
+        const url = `${baseUrl}/quote?inputMint=${SOL_MINT}&outputMint=${tokenMint}&amount=${lamports}&slippageBps=${slippageBps}`;
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.outAmount) {
-          const outTokens = parseFloat(data.outAmount) / 1e6; // 6 decimals standard
-          const route = data.routePlan?.[0]?.swapInfo?.label || 'Raydium / Meteora';
-          return {
-            inAmountSol: solAmount,
-            outAmountTokens: outTokens,
-            priceImpactPct: parseFloat(data.priceImpactPct) || 0.1,
-            routeLabel: route,
-            minimumReceived: parseFloat(data.otherAmountThreshold || data.outAmount) / 1e6,
-            rawQuote: data
-          };
+        if (res.ok) {
+          const data = await res.json();
+          if (data.outAmount) {
+            const outTokens = parseFloat(data.outAmount) / 1e6; // 6 decimals standard
+            const route = data.routePlan?.[0]?.swapInfo?.label || 'Raydium / Meteora';
+            return {
+              inAmountSol: solAmount,
+              outAmountTokens: outTokens,
+              priceImpactPct: parseFloat(data.priceImpactPct) || 0.1,
+              routeLabel: route,
+              minimumReceived: parseFloat(data.otherAmountThreshold || data.outAmount) / 1e6,
+              rawQuote: data
+            };
+          }
         }
+      } catch (e) {
+        console.warn(`Jupiter quote fallback (${baseUrl}):`, e);
       }
-    } catch (e) {
-      console.warn('Jupiter API quote fetch fallback:', e);
     }
 
     return null;
@@ -92,40 +154,53 @@ export class JupiterService {
     }
 
     try {
-      // 1. Ensure we have an active Jupiter quote
-      let activeQuote = quote;
+      // 1. Always fetch a fresh quote with 2.5% slippage right before building swap tx so pool state isn't stale
+      let activeQuote = await this.getQuote(coin.contractAddress, solAmount, 250);
       if (!activeQuote || !activeQuote.rawQuote) {
-        activeQuote = await this.getQuote(coin.contractAddress, solAmount, 150);
+        activeQuote = quote || null;
       }
 
       if (!activeQuote || !activeQuote.rawQuote) {
         return {
           success: false,
-          message: 'Could not find a live liquidity route on Jupiter for this token. Try buying directly on Raydium or Pump.fun.'
+          message: 'Could not find a live Solana liquidity route on Jupiter for this token (make sure it is a Solana token with active liquidity).'
         };
       }
 
-      // 2. Request real serialized VersionedTransaction from Jupiter API
-      const swapRes = await fetch('https://api.jup.ag/swap/v1/swap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userPublicKey: wallet.publicKey,
-          quoteResponse: activeQuote.rawQuote,
-          wrapAndUnwrapSol: true,
-          dynamicComputeUnitLimit: true,
-          prioritizationFeeLamports: 'auto'
-        })
-      });
+      // 2. Request real serialized VersionedTransaction from Jupiter API (with endpoint fallback)
+      let swapTransaction: string | null = null;
+      let lastSwapErr = '';
 
-      if (!swapRes.ok) {
-        const errText = await swapRes.text();
-        return { success: false, message: `Jupiter Swap error: ${errText.slice(0, 100)}` };
+      for (const baseUrl of this.JUP_ENDPOINTS) {
+        try {
+          const swapRes = await fetch(`${baseUrl}/swap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userPublicKey: wallet.publicKey,
+              quoteResponse: activeQuote.rawQuote,
+              wrapAndUnwrapSol: true,
+              dynamicComputeUnitLimit: true,
+              prioritizationFeeLamports: 'auto'
+            })
+          });
+
+          if (swapRes.ok) {
+            const json = await swapRes.json();
+            if (json?.swapTransaction) {
+              swapTransaction = json.swapTransaction;
+              break;
+            }
+          } else {
+            lastSwapErr = await swapRes.text();
+          }
+        } catch (e: any) {
+          lastSwapErr = e?.message || 'Network error';
+        }
       }
 
-      const { swapTransaction } = await swapRes.json();
       if (!swapTransaction) {
-        return { success: false, message: 'Jupiter did not return a valid swap transaction.' };
+        return { success: false, message: `Jupiter Swap error: ${lastSwapErr.slice(0, 100) || 'Failed to build transaction'}` };
       }
 
       // 3. Deserialize into Solana VersionedTransaction & bundle 0.8% SOL platform fee to Treasury
@@ -133,42 +208,7 @@ export class JupiterService {
       const versionedTx = VersionedTransaction.deserialize(txBytes);
 
       const feeLamports = Math.floor(solAmount * 1e9 * (PLATFORM_FEE_BPS / 10000));
-      if (feeLamports > 0 && wallet.publicKey !== TREASURY_WALLET) {
-        try {
-          const msg = versionedTx.message as any;
-          const treasuryPubkey = new PublicKey(TREASURY_WALLET);
-          const sysPubkey = SystemProgram.programId;
-          const sysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
-
-          if (sysIdx !== -1 && Array.isArray(msg.compiledInstructions)) {
-            let treasuryIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(treasuryPubkey));
-            if (treasuryIdx === -1) {
-              const insertIdx = msg.staticAccountKeys.length - msg.header.numReadonlyUnsignedAccounts;
-              msg.staticAccountKeys.splice(insertIdx, 0, treasuryPubkey);
-              for (const ix of msg.compiledInstructions) {
-                if (ix.programIdIndex >= insertIdx) ix.programIdIndex += 1;
-                ix.accountKeyIndexes = ix.accountKeyIndexes.map((idx: number) => idx >= insertIdx ? idx + 1 : idx);
-              }
-              treasuryIdx = insertIdx;
-            }
-
-            const finalSysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
-            const transferIx = SystemProgram.transfer({
-              fromPubkey: msg.staticAccountKeys[0],
-              toPubkey: treasuryPubkey,
-              lamports: feeLamports
-            });
-
-            msg.compiledInstructions.push({
-              programIdIndex: finalSysIdx,
-              accountKeyIndexes: [0, treasuryIdx],
-              data: Uint8Array.from(transferIx.data)
-            });
-          }
-        } catch (feeErr) {
-          console.warn('Skipping platform fee instruction fallback:', feeErr);
-        }
-      }
+      this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
 
       // 4. Request user signature & broadcast on Solana Mainnet
       const { signature } = await provider.signAndSendTransaction(versionedTx);
@@ -233,13 +273,22 @@ export class JupiterService {
         return { success: false, message: 'Sell amount too small.' };
       }
 
-      // 2. Fetch Jupiter Quote (Token -> SOL)
-      const quoteUrl = `https://api.jup.ag/swap/v1/quote?inputMint=${coin.contractAddress}&outputMint=${SOL_MINT}&amount=${sellRaw.toString()}&slippageBps=150`;
-      const quoteRes = await fetch(quoteUrl);
-      if (!quoteRes.ok) {
-        return { success: false, message: 'Could not fetch Jupiter sell route for this token.' };
+      // 2. Fetch Jupiter Quote (Token -> SOL) across endpoints
+      let quoteData: any = null;
+      for (const baseUrl of this.JUP_ENDPOINTS) {
+        try {
+          const quoteUrl = `${baseUrl}/quote?inputMint=${coin.contractAddress}&outputMint=${SOL_MINT}&amount=${sellRaw.toString()}&slippageBps=250`;
+          const quoteRes = await fetch(quoteUrl);
+          if (quoteRes.ok) {
+            const d = await quoteRes.json();
+            if (d?.outAmount) {
+              quoteData = d;
+              break;
+            }
+          }
+        } catch {}
       }
-      const quoteData = await quoteRes.json();
+
       if (!quoteData?.outAmount) {
         return { success: false, message: 'No active SOL liquidity route found for selling.' };
       }
@@ -248,24 +297,30 @@ export class JupiterService {
       const solReceived = outLamports / 1e9;
 
       // 3. Request serialized VersionedTransaction from Jupiter
-      const swapRes = await fetch('https://api.jup.ag/swap/v1/swap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userPublicKey: wallet.publicKey,
-          quoteResponse: quoteData,
-          wrapAndUnwrapSol: true,
-          dynamicComputeUnitLimit: true,
-          prioritizationFeeLamports: 'auto'
-        })
-      });
-
-      if (!swapRes.ok) {
-        const errText = await swapRes.text();
-        return { success: false, message: `Jupiter Sell error: ${errText.slice(0, 90)}` };
+      let swapTransaction: string | null = null;
+      for (const baseUrl of this.JUP_ENDPOINTS) {
+        try {
+          const swapRes = await fetch(`${baseUrl}/swap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userPublicKey: wallet.publicKey,
+              quoteResponse: quoteData,
+              wrapAndUnwrapSol: true,
+              dynamicComputeUnitLimit: true,
+              prioritizationFeeLamports: 'auto'
+            })
+          });
+          if (swapRes.ok) {
+            const json = await swapRes.json();
+            if (json?.swapTransaction) {
+              swapTransaction = json.swapTransaction;
+              break;
+            }
+          }
+        } catch {}
       }
 
-      const { swapTransaction } = await swapRes.json();
       if (!swapTransaction) {
         return { success: false, message: 'Jupiter did not return a valid sell transaction.' };
       }
@@ -275,42 +330,7 @@ export class JupiterService {
 
       // 4. Bundle 0.8% SOL platform fee on Sell proceeds to TREASURY_WALLET
       const feeLamports = Math.floor(outLamports * (PLATFORM_FEE_BPS / 10000));
-      if (feeLamports > 0 && wallet.publicKey !== TREASURY_WALLET) {
-        try {
-          const msg = versionedTx.message as any;
-          const treasuryPubkey = new PublicKey(TREASURY_WALLET);
-          const sysPubkey = SystemProgram.programId;
-          const sysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
-
-          if (sysIdx !== -1 && Array.isArray(msg.compiledInstructions)) {
-            let treasuryIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(treasuryPubkey));
-            if (treasuryIdx === -1) {
-              const insertIdx = msg.staticAccountKeys.length - msg.header.numReadonlyUnsignedAccounts;
-              msg.staticAccountKeys.splice(insertIdx, 0, treasuryPubkey);
-              for (const ix of msg.compiledInstructions) {
-                if (ix.programIdIndex >= insertIdx) ix.programIdIndex += 1;
-                ix.accountKeyIndexes = ix.accountKeyIndexes.map((idx: number) => idx >= insertIdx ? idx + 1 : idx);
-              }
-              treasuryIdx = insertIdx;
-            }
-
-            const finalSysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
-            const transferIx = SystemProgram.transfer({
-              fromPubkey: msg.staticAccountKeys[0],
-              toPubkey: treasuryPubkey,
-              lamports: feeLamports
-            });
-
-            msg.compiledInstructions.push({
-              programIdIndex: finalSysIdx,
-              accountKeyIndexes: [0, treasuryIdx],
-              data: Uint8Array.from(transferIx.data)
-            });
-          }
-        } catch (feeErr) {
-          console.warn('Skipping sell platform fee fallback:', feeErr);
-        }
-      }
+      this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
 
       // 5. Request wallet signature & broadcast on Solana Mainnet
       const { signature } = await provider.signAndSendTransaction(versionedTx);
