@@ -1169,13 +1169,14 @@ function bindActions() {
 
   // Official Token Banner ($MATCH) Handlers
   const btnCopyOfficialCa = document.getElementById('btnCopyOfficialCa');
+  const officialCaCopyBadge = document.getElementById('officialCaCopyBadge');
   if (btnCopyOfficialCa) {
     btnCopyOfficialCa.addEventListener('click', () => {
       navigator.clipboard.writeText(OFFICIAL_MEMETINDER_CA);
-      btnCopyOfficialCa.innerText = '✓ CA Copied!';
+      if (officialCaCopyBadge) officialCaCopyBadge.innerText = '✓ Copied!';
       showToast(`📋 Copied Official $MATCH CA: ${OFFICIAL_MEMETINDER_CA}`);
       setTimeout(() => {
-        btnCopyOfficialCa.innerText = 'HEp2...pump 📋';
+        if (officialCaCopyBadge) officialCaCopyBadge.innerText = '📋 Copy';
       }, 2000);
     });
   }

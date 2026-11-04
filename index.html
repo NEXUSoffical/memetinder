@@ -67,21 +67,22 @@
     </header>
 
     <!-- Official Platform Token Banner ($MATCH) -->
-    <div id="officialTokenBar" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: linear-gradient(135deg, rgba(255, 42, 122, 0.22), rgba(168, 85, 247, 0.25)); border: 1px solid rgba(255, 110, 175, 0.45); border-radius: 14px; padding: 6px 10px; margin-bottom: 6px; box-shadow: 0 4px 18px rgba(253, 41, 123, 0.2);">
-      <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
-        <span style="font-size: 0.72rem; font-weight: 800; color: #fde68a; white-space: nowrap;">👑 $MATCH</span>
-        <button id="btnCopyOfficialCa" title="Click to copy Official MemeTinder ($MATCH) CA" style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.16); color: #e2e8f0; font-family: monospace; font-size: 0.68rem; padding: 2px 7px; border-radius: 6px; cursor: pointer; white-space: nowrap;">
-          HEp2...pump 📋
-        </button>
+    <div id="officialTokenBar" style="display: flex; flex-direction: column; gap: 5px; background: linear-gradient(135deg, rgba(255, 42, 122, 0.24), rgba(168, 85, 247, 0.28)); border: 1.5px solid rgba(255, 110, 175, 0.55); border-radius: 14px; padding: 8px 12px; margin-bottom: 8px; box-shadow: 0 4px 20px rgba(253, 41, 123, 0.25);">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <span style="font-size: 0.76rem; font-weight: 900; color: #fde68a; letter-spacing: 0.2px;">👑 OFFICIAL TOKEN: $MATCH</span>
+        <div style="display: flex; align-items: center; gap: 5px;">
+          <button id="btnBuyOfficialToken" style="background: var(--primary-flame); border: none; color: white; font-size: 0.7rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; cursor: pointer; box-shadow: 0 2px 10px rgba(253, 41, 123, 0.45);">
+            🔥 Buy $MATCH
+          </button>
+          <a href="https://pump.fun/coin/HEp2GzDk2wKF9dUdU4CK5tLP3Ubc7bMP5g8c6Qsvpump" target="_blank" rel="noopener" style="background: rgba(74, 222, 128, 0.18); border: 1px solid rgba(74, 222, 128, 0.45); color: #86efac; font-size: 0.68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-decoration: none;">
+            💊 Pump.fun
+          </a>
+        </div>
       </div>
-      <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
-        <button id="btnBuyOfficialToken" style="background: var(--primary-flame); border: none; color: white; font-size: 0.7rem; font-weight: 800; padding: 4px 9px; border-radius: 999px; cursor: pointer; box-shadow: 0 2px 10px rgba(253, 41, 123, 0.4);">
-          🔥 Buy $MATCH
-        </button>
-        <a href="https://pump.fun/coin/HEp2GzDk2wKF9dUdU4CK5tLP3Ubc7bMP5g8c6Qsvpump" target="_blank" rel="noopener" style="background: rgba(74, 222, 128, 0.16); border: 1px solid rgba(74, 222, 128, 0.4); color: #86efac; font-size: 0.68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-decoration: none;">
-          💊 Pump.fun
-        </a>
-      </div>
+      <button id="btnCopyOfficialCa" title="Click to copy Official MemeTinder ($MATCH) Contract Address" style="width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 6px; background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.2); color: #f8fafc; font-family: monospace; font-size: 0.7rem; font-weight: 700; padding: 5px 9px; border-radius: 8px; cursor: pointer; text-align: left;">
+        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">CA: HEp2GzDk2wKF9dUdU4CK5tLP3Ubc7bMP5g8c6Qsvpump</span>
+        <span id="officialCaCopyBadge" style="background: rgba(255, 255, 255, 0.14); padding: 2px 6px; border-radius: 5px; font-size: 0.65rem; color: #fde68a; flex-shrink: 0;">📋 Copy</span>
+      </button>
     </div>
 
     <!-- 1-Click Quick Ape Control Subbar -->
