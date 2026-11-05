@@ -1,4 +1,14 @@
-export type Chain = 'solana' | 'ethereum' | 'base' | 'pumpfun';
+export type Chain = 'solana' | 'pumpfun';
+
+export interface SafetyScore {
+  isMintRevoked: boolean;
+  isFreezeRevoked: boolean;
+  isLpBurned: boolean;
+  top10HoldersPercent: number;
+  score: number; // 0 - 100
+  risks?: string[];
+  verifiedOnChain?: boolean;
+}
 
 export interface MemeCoin {
   id: string;
@@ -18,13 +28,7 @@ export interface MemeCoin {
   holdersCount: number;
   contractAddress: string;
   dexScreenerUrl: string;
-  safetyScore: {
-    isMintRevoked: boolean;
-    isFreezeRevoked: boolean;
-    isLpBurned: boolean;
-    top10HoldersPercent: number;
-    score: number; // 0 - 100
-  };
+  safetyScore: SafetyScore;
   sparkline: number[];
   traits: string[];
   devStatus: 'Based Dev' | 'Community Takeover' | 'AI Autonomous' | 'Locked & Loaded';
@@ -52,4 +56,4 @@ export interface RealHolding {
   timestamp: number;
 }
 
-export type FilterChain = 'all' | 'solana' | 'pumpfun' | 'base' | 'ethereum' | 'microcaps' | 'runners';
+export type FilterChain = 'all' | 'solana' | 'pumpfun' | 'microcaps' | 'runners' | 'boosted';

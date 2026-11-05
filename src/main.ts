@@ -174,7 +174,8 @@ function updateWalletUI(wallet: RealWalletState) {
 
     walletStatusTypeBadge.innerText = (wallet.providerType || 'SOLANA').toUpperCase();
     walletModalAddress.innerText = wallet.publicKey;
-    walletModalSolBal.innerText = `${wallet.solBalance.toFixed(4)} SOL`;
+    const solUsd = wallet.solBalance * DexService.getSolPriceUsd();
+    walletModalSolBal.innerText = `${wallet.solBalance.toFixed(4)} SOL (~$${solUsd.toFixed(2)})`;
 
     // Track real wallet connection for Founder Admin Panel
     localStorage.setItem('memetinder_my_ref_wallet_v1', wallet.publicKey);
@@ -212,7 +213,8 @@ function updateWalletUI(wallet: RealWalletState) {
 // Fetch & Update Jupiter Swap Quote for Match Modal
 async function loadJupiterQuoteForCoin(coin: MemeCoin) {
   currentJupiterQuote = null;
-  jupInAmount.innerText = `${selectedApeSol} SOL (~$${(selectedApeSol * 95.8).toFixed(2)})`;
+  const solPrice = DexService.getSolPriceUsd();
+  jupInAmount.innerText = `${selectedApeSol} SOL (~$${(selectedApeSol * solPrice).toFixed(2)})`;
   jupOutAmount.innerText = 'Routing best DEX quote on Jupiter...';
   jupRouteLabel.innerText = '🪐 Jupiter Routing...';
   txConfirmationArea.style.display = 'none';
@@ -225,8 +227,12 @@ async function loadJupiterQuoteForCoin(coin: MemeCoin) {
     btnSwapLabel.innerText = '🟣 Connect Wallet to Ape In';
   }
 
-  const quote = await JupiterService.getQuote(coin.contractAddress, selectedApeSol);
+  const [quote, freshSolPrice] = await Promise.all([
+    JupiterService.getQuote(coin.contractAddress, selectedApeSol, 250, coin.priceUsd),
+    DexService.fetchSolPriceUsd()
+  ]);
   currentJupiterQuote = quote;
+  jupInAmount.innerText = `${selectedApeSol} SOL (~$${(selectedApeSol * freshSolPrice).toFixed(2)})`;
 
   if (quote) {
     const formattedTokens = quote.outAmountTokens > 1000 
@@ -235,7 +241,7 @@ async function loadJupiterQuoteForCoin(coin: MemeCoin) {
     jupOutAmount.innerText = `~${formattedTokens} $${coin.symbol}`;
     jupRouteLabel.innerText = `🪐 ${quote.routeLabel}`;
   } else {
-    const estTokens = (selectedApeSol * 95.8) / (coin.priceUsd || 0.001);
+    const estTokens = (selectedApeSol * freshSolPrice) / (coin.priceUsd || 0.001);
     const formattedTokens = estTokens > 1000 
       ? estTokens.toLocaleString(undefined, { maximumFractionDigits: 0 })
       : estTokens.toFixed(2);
@@ -446,17 +452,30 @@ function openProfileModal(coin: MemeCoin) {
       </div>
     </div>
 
-    <!-- Safety Radar -->
+    <!-- Safety Radar (On-Chain RPC + RugCheck.xyz) -->
     <div style="background: rgba(255,255,255,0.04); border-radius: 16px; padding: 12px 14px; border: 1px solid var(--border-subtle); margin-bottom: 14px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: 800; font-size: 0.88rem;">🛡️ Safety Radar Score</span>
-        <span style="color: #34d399; font-weight: 900; font-size: 1rem;">${coin.safetyScore.score}/100</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-weight: 800; font-size: 0.88rem;">🛡️ On-Chain RugCheck</span>
+          <span id="rugCheckStatusBadge" style="font-size: 0.64rem; font-weight: 800; padding: 2px 6px; border-radius: 6px; background: rgba(16, 185, 129, 0.16); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;">
+            ${coin.safetyScore.verifiedOnChain ? '🟢 ON-CHAIN VERIFIED' : '⏳ AUDITING MINT...'}
+          </span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <a href="https://rugcheck.xyz/tokens/${encodeURIComponent(coin.contractAddress)}" target="_blank" rel="noopener" style="font-size: 0.7rem; color: #93c5fd; text-decoration: none; font-weight: 700;">RugCheck.xyz ↗</a>
+          <span id="rugCheckScoreVal" style="color: ${coin.safetyScore.score >= 80 ? '#34d399' : coin.safetyScore.score >= 55 ? '#fbbf24' : '#f87171'}; font-weight: 900; font-size: 1rem;">${coin.safetyScore.score}/100</span>
+        </div>
       </div>
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; font-size: 0.76rem; color: #cbd5e1;">
-        <div>${coin.safetyScore.isMintRevoked ? '✅' : '❌'} Mint Revoked</div>
-        <div>${coin.safetyScore.isFreezeRevoked ? '✅' : '❌'} Freeze Revoked</div>
-        <div>${coin.safetyScore.isLpBurned ? '✅' : '⚠️'} LP Burned/Locked</div>
-        <div>👥 Top 10: <b>${coin.safetyScore.top10HoldersPercent}%</b></div>
+        <div id="rugMintRow">${coin.safetyScore.isMintRevoked ? '✅ Mint Revoked' : '🚨 Mint Active!'}</div>
+        <div id="rugFreezeRow">${coin.safetyScore.isFreezeRevoked ? '✅ Freeze Revoked' : '🚨 Freeze Active!'}</div>
+        <div id="rugLpRow">${coin.safetyScore.isLpBurned ? '✅ LP Burned/Locked' : '⚠️ LP Unlocked'}</div>
+        <div id="rugTop10Row">👥 Top 10: <b>${coin.safetyScore.top10HoldersPercent}%</b></div>
+      </div>
+      <div id="rugRisksRow" style="margin-top: 8px; font-size: 0.72rem; color: ${(coin.safetyScore.risks && coin.safetyScore.risks.length > 0) ? '#fca5a5' : '#6ee7b7'}; font-weight: 700;">
+        ${(coin.safetyScore.risks && coin.safetyScore.risks.length > 0)
+          ? `⚠️ Flags: ${coin.safetyScore.risks.map(r => escapeHtml(r)).join(' • ')}`
+          : '✅ Mint & Freeze Authorities verified safe on Solana Mainnet'}
       </div>
     </div>
 
@@ -486,6 +505,38 @@ function openProfileModal(coin: MemeCoin) {
   `;
 
   // Attach dynamic event listeners in modal
+  DexService.fetchRealRugCheck(coin.contractAddress, coin.liquidityUsd)
+    .then(realSafety => {
+      coin.safetyScore = realSafety;
+      const elBadge = document.getElementById('rugCheckStatusBadge');
+      const elScore = document.getElementById('rugCheckScoreVal');
+      const elMint = document.getElementById('rugMintRow');
+      const elFreeze = document.getElementById('rugFreezeRow');
+      const elLp = document.getElementById('rugLpRow');
+      const elTop10 = document.getElementById('rugTop10Row');
+      const elRisks = document.getElementById('rugRisksRow');
+
+      if (elBadge) elBadge.innerText = '🟢 ON-CHAIN VERIFIED';
+      if (elScore) {
+        elScore.innerText = `${realSafety.score}/100`;
+        elScore.style.color = realSafety.score >= 80 ? '#34d399' : realSafety.score >= 55 ? '#fbbf24' : '#f87171';
+      }
+      if (elMint) elMint.innerText = realSafety.isMintRevoked ? '✅ Mint Revoked' : '🚨 Mint Active!';
+      if (elFreeze) elFreeze.innerText = realSafety.isFreezeRevoked ? '✅ Freeze Revoked' : '🚨 Freeze Active!';
+      if (elLp) elLp.innerText = realSafety.isLpBurned ? '✅ LP Burned/Locked' : '⚠️ LP Unlocked';
+      if (elTop10) elTop10.innerHTML = `👥 Top 10: <b>${realSafety.top10HoldersPercent}%</b>`;
+      if (elRisks) {
+        if (realSafety.risks && realSafety.risks.length > 0) {
+          elRisks.style.color = '#fca5a5';
+          elRisks.innerText = `⚠️ Flags: ${realSafety.risks.join(' • ')}`;
+        } else {
+          elRisks.style.color = '#6ee7b7';
+          elRisks.innerText = '✅ Mint & Freeze Authorities verified safe on Solana Mainnet';
+        }
+      }
+    })
+    .catch(() => {});
+
   const btnCopy = document.getElementById('btnCopyCA');
   if (btnCopy) {
     btnCopy.addEventListener('click', () => {
@@ -750,7 +801,7 @@ function openMatchesModal() {
 
       // Only count real purchased SOL/tokens toward USD portfolio balance (never fake $10 for watchlisted coins)
       const investedUsd = m.solSpent && m.solSpent > 0
-        ? m.solSpent * 95.8
+        ? m.solSpent * DexService.getSolPriceUsd()
         : walletTokens > 0
           ? walletTokens * entryPrice
           : 0;
@@ -1001,7 +1052,7 @@ function openMatchesModal() {
       const hasRealPurchase = Boolean((m.solSpent && m.solSpent > 0) || walletTokens > 0);
 
       const investedUsd = m.solSpent && m.solSpent > 0
-        ? m.solSpent * 95.8
+        ? m.solSpent * DexService.getSolPriceUsd()
         : walletTokens > 0
           ? walletTokens * entryPrice
           : 0;
@@ -1098,6 +1149,11 @@ function getFilteredCoins(): MemeCoin[] {
   }
   if (activeFilter === 'runners') {
     return allCoins.filter(c => c.change24h >= 50);
+  }
+  if (activeFilter === 'boosted') {
+    const boostedAddrs = new Set(DexService.getBoostedEntries().map(b => b.contractAddress));
+    const boostedCoins = allCoins.filter(c => boostedAddrs.has(c.contractAddress) || c.tagline.includes('Boosted'));
+    return boostedCoins.length > 0 ? boostedCoins : allCoins;
   }
   return allCoins.filter(c => c.chain === activeFilter);
 }
@@ -1616,6 +1672,8 @@ function bindActions() {
         const ca = btn.getAttribute('data-boost-ca') || '';
         const found = entries.find(e => e.contractAddress === ca);
         if (found) {
+          allCoins = [found.coin, ...allCoins.filter(c => c.contractAddress !== found.coin.contractAddress)];
+          if (swipeEngine) swipeEngine.setCoins(getFilteredCoins());
           openProfileModal(found.coin);
         }
       });
@@ -1632,6 +1690,7 @@ function bindActions() {
     if (!activeBoostsQueueList) return;
     const entries = DexService.getBoostedEntries();
     const now = Date.now();
+    const isAdminUnlocked = localStorage.getItem('memetinder_admin_unlocked_v1') === '1';
 
     if (entries.length === 0) {
       activeBoostsQueueList.innerHTML = `
@@ -1652,12 +1711,39 @@ function bindActions() {
             <span style="font-size:0.8rem; font-weight:800; color:#fff;">$${escapeHtml(entry.coin.symbol)}</span>
             <span style="font-size:0.68rem; color:var(--text-muted);">${hoursLeft}h left</span>
           </div>
-          <span style="font-size:0.75rem; font-weight:800; color:#f43f5e;">🔥 ${entry.boostPoints}x Power</span>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:0.75rem; font-weight:800; color:#f43f5e;">🔥 ${entry.boostPoints}x</span>
+            <button type="button" class="btn-stack-boost-ca" data-ca="${escapeHtml(entry.contractAddress)}" style="background:rgba(245, 158, 11, 0.2); border:1px solid rgba(245, 158, 11, 0.45); color:#fde68a; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:6px; cursor:pointer;">+ Stack</button>
+            ${isAdminUnlocked ? `<button type="button" class="btn-remove-boost-ca" data-ca="${escapeHtml(entry.contractAddress)}" title="Admin: Remove Boost" style="background:rgba(239, 68, 68, 0.2); border:1px solid rgba(239, 68, 68, 0.45); color:#fca5a5; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:6px; cursor:pointer;">✕</button>` : ''}
+          </div>
         </div>
       `;
     }).join('');
 
     activeBoostsQueueList.innerHTML = rowsHtml;
+
+    activeBoostsQueueList.querySelectorAll('.btn-stack-boost-ca').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ca = btn.getAttribute('data-ca') || '';
+        if (inputBoostCa && ca) {
+          inputBoostCa.value = ca;
+          inputBoostCa.focus();
+          showToast('⚡ Selected token CA to stack additional Boost Power!');
+        }
+      });
+    });
+
+    activeBoostsQueueList.querySelectorAll('.btn-remove-boost-ca').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const ca = btn.getAttribute('data-ca') || '';
+        if (!ca) return;
+        await DexService.removeBoostedCoin(ca);
+        renderActiveBoostsQueue();
+        allCoins = await DexService.getTrendingCoins(true);
+        if (swipeEngine) swipeEngine.setCoins(getFilteredCoins());
+        showToast('🗑️ Removed boosted token from queue.');
+      });
+    });
   }
 
   async function openBoostModal() {
@@ -1735,7 +1821,12 @@ function bindActions() {
       }
 
       btnPayAndBoostCoin.innerText = `⏳ Approve ${selectedBoostSol} SOL in Wallet...`;
-      const payRes = await JupiterService.executeBoostPayment(selectedBoostSol);
+      const payRes = await JupiterService.executeBoostPayment(
+        selectedBoostSol,
+        coin.contractAddress,
+        selectedBoostPoints,
+        selectedBoostHours
+      );
 
       btnPayAndBoostCoin.disabled = false;
       btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Add +${selectedBoostPoints}x Boost`;
@@ -2364,7 +2455,11 @@ async function boot() {
         btn.addEventListener('click', () => {
           const ca = btn.getAttribute('data-boost-ca') || '';
           const found = entries.find(e => e.contractAddress === ca);
-          if (found) openProfileModal(found.coin);
+          if (found) {
+            allCoins = [found.coin, ...allCoins.filter(c => c.contractAddress !== found.coin.contractAddress)];
+            if (swipeEngine) swipeEngine.setCoins(getFilteredCoins());
+            openProfileModal(found.coin);
+          }
         });
       });
     }

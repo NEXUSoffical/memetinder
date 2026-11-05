@@ -1,5 +1,6 @@
 import { MemeCoin } from './types';
 import { escapeHtml } from './utils';
+import { DexService } from './dexService';
 
 export interface SwipeCallbacks {
   onSwipe: (coin: MemeCoin, direction: 'left' | 'right' | 'up') => void;
@@ -66,7 +67,28 @@ export class SwipeEngine {
         this.superStampEl = cardEl.querySelector('.stamp-super');
         this.attachPointerListeners(cardEl, coin);
       }
+
+      if (!coin.safetyScore.verifiedOnChain && coin.contractAddress) {
+        DexService.fetchRealRugCheck(coin.contractAddress, coin.liquidityUsd)
+          .then(realSafety => {
+            coin.safetyScore = realSafety;
+            const slot = cardEl.querySelector('.card-safety-slot');
+            if (slot) slot.innerHTML = this.getSafetyPillHtml(coin);
+          })
+          .catch(() => {});
+      }
     }
+  }
+
+  private getSafetyPillHtml(coin: MemeCoin): string {
+    const s = coin.safetyScore;
+    if (!s.isMintRevoked || !s.isFreezeRevoked || s.score < 55) {
+      return `<span class="safety-pill warn" style="background:rgba(239,68,68,0.22); border-color:rgba(239,68,68,0.55); color:#fca5a5;">🚨 Rug Risk ${s.score}%</span>`;
+    }
+    if (s.score >= 80) {
+      return `<span class="safety-pill safe">🛡️ Safu ${s.score}%</span>`;
+    }
+    return `<span class="safety-pill warn">⚠️ Caution ${s.score}%</span>`;
   }
 
   private formatStatUsd(val: number): string {
@@ -79,14 +101,19 @@ export class SwipeEngine {
 
   private createCardElement(coin: MemeCoin, stackIndex: number): HTMLElement {
     const card = document.createElement('div');
-    card.className = `tinder-card stack-index-${stackIndex}`;
+    const boostTrait = (coin.traits || []).find(t => t.includes('Boost Power'));
+    const isMemeTinderBoosted = Boolean(boostTrait || (coin.tagline && coin.tagline.includes('MemeTinder')));
+
+    card.className = `tinder-card stack-index-${stackIndex}${isMemeTinderBoosted ? ' boosted-gold-card' : ''}`;
     card.dataset.coinId = coin.id;
+    if (isMemeTinderBoosted) {
+      card.style.border = '2px solid rgba(251, 191, 36, 0.85)';
+      card.style.boxShadow = '0 0 28px rgba(245, 158, 11, 0.35), 0 18px 40px rgba(0, 0, 0, 0.65)';
+    }
 
     // Chain badge colors
     const chainLabels: Record<string, string> = {
       solana: '🟣 Solana',
-      ethereum: '🔷 Ethereum',
-      base: '🔵 Base',
       pumpfun: '💊 Pump.fun'
     };
 
@@ -95,11 +122,12 @@ export class SwipeEngine {
     const changeSign = isPositive ? '+' : '';
 
     // Safety Pill
-    const safetyBadge = coin.safetyScore.score >= 95 
-      ? '<span class="safety-pill safe">🛡️ Safu 99%</span>'
-      : '<span class="safety-pill warn">⚠️ Degen Meta</span>';
+    const safetyBadge = `<span class="card-safety-slot">${this.getSafetyPillHtml(coin)}</span>`;
 
     const fallbackImg = 'https://assets.coingecko.com/coins/images/29850/large/pepe-token.png';
+    const hypeBadgeHtml = isMemeTinderBoosted
+      ? `<div class="card-hype-badge" style="background: linear-gradient(135deg, #f59e0b, #f43f5e); border-color: #fde68a; color: #fff; font-weight: 900;">👑 ${escapeHtml(boostTrait || '🔥 Boosted')}</div>`
+      : `<div class="card-hype-badge">🔥 ${coin.hypeScore}% Hype</div>`;
 
     card.innerHTML = `
       <!-- Stamps -->
@@ -115,7 +143,7 @@ export class SwipeEngine {
         </div>
         <div class="card-gradient-overlay"></div>
         <div class="card-chain-pill ${coin.chain}">${chainLabels[coin.chain] || coin.chain}</div>
-        <div class="card-hype-badge">🔥 ${coin.hypeScore}% Hype</div>
+        ${hypeBadgeHtml}
       </div>
 
       <!-- Card Content Info -->

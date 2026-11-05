@@ -1,7 +1,8 @@
-import { VersionedTransaction, Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
+import { VersionedTransaction, Transaction, TransactionInstruction, SystemProgram, PublicKey } from '@solana/web3.js';
 import { MemeCoin } from './types';
 import { WalletService } from './walletService';
 import { PortfolioService } from './portfolioService';
+import { DexService } from './dexService';
 
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 export const TREASURY_WALLET = 'EEjAgWkw5vVgFPvCS31TPhmAXeYjFrSt4awZNfDFsE9V';
@@ -177,7 +178,7 @@ export class JupiterService {
   /**
    * Fetches real live quote from Jupiter V1 Aggregator API with multi-endpoint fallback
    */
-  public static async getQuote(tokenMint: string, solAmount: number, slippageBps = 250): Promise<JupiterQuote | null> {
+  public static async getQuote(tokenMint: string, solAmount: number, slippageBps = 250, tokenPriceUsd = 0): Promise<JupiterQuote | null> {
     if (tokenMint === SOL_MINT) return null;
     const netSolAmount = solAmount * (1 - PLATFORM_FEE_BPS / 10000);
     const lamports = Math.max(1000, Math.round(netSolAmount * 1e9));
@@ -194,14 +195,25 @@ export class JupiterService {
         if (res.ok) {
           const data = await res.json();
           if (data.outAmount) {
-            const outTokens = parseFloat(data.outAmount) / 1e6; // 6 decimals standard
+            const rawOut = parseFloat(data.outAmount);
+            let decimals = 6;
+            const swapUsd = parseFloat(data.swapUsdValue) || (netSolAmount * DexService.getSolPriceUsd());
+            if (tokenPriceUsd > 0 && swapUsd > 0 && rawOut > 0) {
+              const approxUiTokens = swapUsd / tokenPriceUsd;
+              const estDec = Math.round(Math.log10(rawOut / approxUiTokens));
+              if (estDec >= 0 && estDec <= 12) {
+                decimals = estDec;
+              }
+            }
+            const divisor = Math.pow(10, decimals);
+            const outTokens = rawOut / divisor;
             const route = data.routePlan?.[0]?.swapInfo?.label || 'Raydium / Meteora';
             return {
               inAmountSol: solAmount,
               outAmountTokens: outTokens,
               priceImpactPct: parseFloat(data.priceImpactPct) || 0.1,
               routeLabel: route,
-              minimumReceived: parseFloat(data.otherAmountThreshold || data.outAmount) / 1e6,
+              minimumReceived: parseFloat(data.otherAmountThreshold || data.outAmount) / divisor,
               rawQuote: data
             };
           }
@@ -245,7 +257,7 @@ export class JupiterService {
 
     try {
       // 1. Always fetch a fresh quote with 2.5% slippage right before building swap tx so pool state isn't stale
-      let activeQuote = await this.getQuote(coin.contractAddress, solAmount, 250);
+      let activeQuote = await this.getQuote(coin.contractAddress, solAmount, 250, coin.priceUsd);
       if (!activeQuote || !activeQuote.rawQuote) {
         activeQuote = quote || null;
       }
@@ -459,7 +471,12 @@ export class JupiterService {
   /**
    * Executes a real SOL payment to TREASURY_WALLET for featuring/boosting a coin on the MemeTinder deck
    */
-  public static async executeBoostPayment(solAmount: number): Promise<SwapResult> {
+  public static async executeBoostPayment(
+    solAmount: number,
+    contractAddress = '',
+    boostPoints = 30,
+    durationHours = 24
+  ): Promise<SwapResult> {
     const wallet = WalletService.getState();
     if (!wallet.isConnected || !wallet.publicKey) {
       return {
@@ -471,6 +488,18 @@ export class JupiterService {
     const provider = WalletService.getProvider(wallet.providerType || 'phantom');
     if (!provider) {
       return { success: false, message: 'Wallet provider not found in browser.' };
+    }
+
+    if (!wallet.balanceLoaded || wallet.solBalance === 0) {
+      await WalletService.refreshBalance();
+    }
+
+    const latestWallet = WalletService.getState();
+    if (latestWallet.balanceLoaded && latestWallet.solBalance < solAmount) {
+      return {
+        success: false,
+        message: `Insufficient SOL balance! You have ${latestWallet.solBalance.toFixed(4)} SOL, need ${solAmount} SOL.`
+      };
     }
 
     try {
@@ -510,8 +539,12 @@ export class JupiterService {
       const toPubkey = new PublicKey(TREASURY_WALLET);
       const totalLamports = Math.round(solAmount * 1e9);
 
-      const referrerWallet = this.getActiveReferrerWallet(wallet.publicKey);
-      const referrerLamports = referrerWallet ? Math.floor(totalLamports * REFERRER_SHARE) : 0;
+      const candidateReferrer = this.getActiveReferrerWallet(wallet.publicKey);
+      const candidateLamports = candidateReferrer ? Math.floor(totalLamports * REFERRER_SHARE) : 0;
+      const canSplit = await this.isReferrerTransferSafe(candidateReferrer, candidateLamports);
+
+      const referrerWallet = canSplit ? candidateReferrer : null;
+      const referrerLamports = canSplit ? candidateLamports : 0;
       const treasuryLamports = totalLamports - referrerLamports;
 
       const tx = new Transaction();
@@ -533,6 +566,21 @@ export class JupiterService {
             lamports: referrerLamports
           })
         );
+      }
+
+      // Attach on-chain SPL Memo so boosts persist across serverless cold starts directly on Solana
+      if (contractAddress) {
+        try {
+          const memoProgramId = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+          const memoData = new TextEncoder().encode(`MT_BOOST:${contractAddress}:${boostPoints}:${durationHours}`);
+          tx.add(
+            new TransactionInstruction({
+              keys: [{ pubkey: fromPubkey, isSigner: true, isWritable: false }],
+              programId: memoProgramId,
+              data: memoData as any
+            })
+          );
+        } catch {}
       }
 
       const { signature } = await provider.signAndSendTransaction(tx);
