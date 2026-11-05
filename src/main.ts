@@ -1,6 +1,5 @@
 import { MemeCoin, FilterChain } from './types';
 import { DexService } from './dexService';
-import { OFFICIAL_MEMETINDER_CA, OFFICIAL_MEMETINDER_COIN } from './coinsData';
 import { SwipeEngine } from './swipeEngine';
 import { SoundEngine } from './soundEngine';
 import { PortfolioService } from './portfolioService';
@@ -1332,27 +1331,6 @@ function bindActions() {
     refreshTrendingFeed();
   });
 
-  // Official Token Banner ($MATCH) Handlers
-  const btnCopyOfficialCa = document.getElementById('btnCopyOfficialCa');
-  const officialCaCopyBadge = document.getElementById('officialCaCopyBadge');
-  if (btnCopyOfficialCa) {
-    btnCopyOfficialCa.addEventListener('click', () => {
-      navigator.clipboard.writeText(OFFICIAL_MEMETINDER_CA);
-      if (officialCaCopyBadge) officialCaCopyBadge.innerText = '✓ Copied!';
-      showToast(`📋 Copied Official $MATCH CA: ${OFFICIAL_MEMETINDER_CA}`);
-      setTimeout(() => {
-        if (officialCaCopyBadge) officialCaCopyBadge.innerText = '📋 Copy';
-      }, 2000);
-    });
-  }
-
-  const btnBuyOfficialToken = document.getElementById('btnBuyOfficialToken');
-  if (btnBuyOfficialToken) {
-    btnBuyOfficialToken.addEventListener('click', () => {
-      openProfileModal(OFFICIAL_MEMETINDER_COIN);
-    });
-  }
-
   // Sound Toggle
   btnAudioToggle.addEventListener('click', () => {
     const isMuted = sound.toggleMute();
@@ -1554,22 +1532,10 @@ function bindActions() {
     const entries = DexService.getBoostedEntries();
     const now = Date.now();
 
-    const officialRow = `
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:9px; background:rgba(244,63,94,0.12); border:1px solid rgba(244,63,94,0.35);">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-size:0.74rem; font-weight:900; color:#fbbf24;">📌 PINNED</span>
-          <span style="font-size:0.8rem; font-weight:800; color:#fff;">$${escapeHtml(OFFICIAL_MEMETINDER_COIN.symbol)}</span>
-          <span style="font-size:0.7rem; color:#fda4af;">Official Platform Token</span>
-        </div>
-        <span style="font-size:0.72rem; font-weight:800; color:#fbbf24;">👑 Always #1</span>
-      </div>
-    `;
-
     if (entries.length === 0) {
       activeBoostsQueueList.innerHTML = `
-        ${officialRow}
         <div style="font-size:0.73rem; color:var(--text-muted); text-align:center; padding:8px 4px;">
-          No community boosts active right now — boost a token above to claim #1 Boost Power priority!
+          No active boosts right now — boost a token above to claim #1 Boost Power priority!
         </div>
       `;
       return;
@@ -1590,7 +1556,7 @@ function bindActions() {
       `;
     }).join('');
 
-    activeBoostsQueueList.innerHTML = officialRow + rowsHtml;
+    activeBoostsQueueList.innerHTML = rowsHtml;
   }
 
   async function openBoostModal() {
@@ -1681,9 +1647,8 @@ function bindActions() {
         const boostedDeck = DexService.getBoostedCoins();
         const boostedIds = new Set(boostedDeck.map(c => c.contractAddress));
         allCoins = [
-          OFFICIAL_MEMETINDER_COIN,
-          ...boostedDeck.filter(c => c.contractAddress !== OFFICIAL_MEMETINDER_CA),
-          ...allCoins.filter(c => c.contractAddress !== OFFICIAL_MEMETINDER_CA && !boostedIds.has(c.contractAddress))
+          ...boostedDeck,
+          ...allCoins.filter(c => !boostedIds.has(c.contractAddress))
         ];
         if (swipeEngine) {
           swipeEngine.setCoins(getFilteredCoins());
@@ -1846,7 +1811,7 @@ function bindActions() {
       const winRate = arcadeStats.totalCalls > 0
         ? Math.min(99, Math.max(52, Math.round((arcadeStats.goodCalls / arcadeStats.totalCalls) * 100)))
         : 100;
-      const text = `My @MemeTinderr Trench Card 🔥🐸\n\nRank: ${rankInfo.fullTitle}\nXP: ${arcadeStats.xp.toLocaleString()} XP\nBest Streak: 🔥 ${arcadeStats.bestStreak}x\nRugs Dodged: 💀 ${arcadeStats.rugsDodged}\nCall Accuracy: 🎯 ${winRate}%\n\nOfficial Token: $MATCH (${OFFICIAL_MEMETINDER_CA})\nSwipe & Trade: https://memetinder.fun`;
+      const text = `My @MemeTinderr Trench Card 🔥🐸\n\nRank: ${rankInfo.fullTitle}\nXP: ${arcadeStats.xp.toLocaleString()} XP\nBest Streak: 🔥 ${arcadeStats.bestStreak}x\nRugs Dodged: 💀 ${arcadeStats.rugsDodged}\nCall Accuracy: 🎯 ${winRate}%\n\nSwipe & Trade on Solana: https://memetinder.fun`;
       window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
     });
   }
