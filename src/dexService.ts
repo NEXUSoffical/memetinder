@@ -50,7 +50,7 @@ export class DexService {
     return this.solPriceUsd;
   }
 
-  public static saveBoostedCoin(coin: MemeCoin, boostPoints = 30, durationHours = 24, txHash = ''): number {
+  public static saveBoostedCoin(coin: MemeCoin, boostPoints = 30, durationHours = 24, txHash = '', adminWallet = ''): number {
     let totalPoints = boostPoints;
     const now = Date.now();
     try {
@@ -80,14 +80,14 @@ export class DexService {
       fetch('/api/boosts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coin, boostPoints, durationHours, txHash })
+        body: JSON.stringify({ coin, boostPoints, durationHours, txHash, adminWallet })
       }).catch(() => {});
     }
 
     return totalPoints;
   }
 
-  public static async removeBoostedCoin(contractAddress: string): Promise<void> {
+  public static async removeBoostedCoin(contractAddress: string, adminWallet = ''): Promise<void> {
     try {
       const entries = this.getBoostedEntries().filter(e => e.contractAddress !== contractAddress);
       localStorage.setItem(this.BOOSTED_COINS_KEY, JSON.stringify(entries));
@@ -96,7 +96,7 @@ export class DexService {
       await fetch('/api/boosts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove_boost', contractAddress })
+        body: JSON.stringify({ action: 'remove_boost', contractAddress, adminWallet })
       });
     } catch {}
   }
@@ -332,10 +332,10 @@ export class DexService {
           for (const [addr, pair] of bestPairMap.entries()) {
             const meta = tokenMetaMap.get(addr);
             const price = parseFloat(pair.priceUsd) || 0.0001;
-            const change24h = pair.priceChange?.h24 ?? (Math.round((Math.random() * 40 - 5) * 10) / 10);
-            const marketCap = pair.marketCap || pair.fdv || Math.floor(Math.random() * 2000000 + 100000);
-            const volume24h = pair.volume?.h24 || 50000;
             const liquidityUsd = pair.liquidity?.usd || 25000;
+            const change24h = pair.priceChange?.h24 ?? pair.priceChange?.h6 ?? pair.priceChange?.h1 ?? 0;
+            const marketCap = pair.marketCap || pair.fdv || Math.round(liquidityUsd * 2.5);
+            const volume24h = pair.volume?.h24 || 0;
             
             const isPump = pair.dexId === 'pumpswap' || pair.dexId === 'pumpfun' || (pair.baseToken?.address || '').endsWith('pump');
 
@@ -387,7 +387,7 @@ export class DexService {
                 isMintRevoked: true,
                 isFreezeRevoked: true,
                 isLpBurned: isLiqBurned,
-                top10HoldersPercent: Math.floor(Math.random() * 15 + 8),
+                top10HoldersPercent: 14.5,
                 score: Math.min(99, Math.floor(70 + buyRatio * 28))
               },
               sparkline,

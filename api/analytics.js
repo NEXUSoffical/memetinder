@@ -1,4 +1,5 @@
 // Serverless Real-Time Visitor & Wallet Connection Analytics for MemeTinder Admin
+const TREASURY_WALLET = 'EEjAgWkw5vVgFPvCS31TPhmAXeYjFrSt4awZNfDFsE9V';
 const visitorsMap = new Map(); // visitorId -> { visitorId, device, refSource, walletAddress, walletProvider, solBalance, visitsCount, firstSeen, lastSeen }
 const walletsMap = new Map();  // walletAddress -> { walletAddress, providerType, solBalance, handle, refSource, connectedAt, lastSeen }
 let totalPageViews = 0;
@@ -17,6 +18,10 @@ export default async function handler(req, res) {
   const now = Date.now();
 
   if (req.method === 'GET') {
+    const adminWallet = String(req.query?.adminWallet || '').trim();
+    if (adminWallet !== TREASURY_WALLET) {
+      return res.status(403).json({ error: 'Unauthorized: Founder Treasury Wallet required' });
+    }
     const visitorsList = Array.from(visitorsMap.values())
       .sort((a, b) => b.lastSeen - a.lastSeen)
       .slice(0, 100);

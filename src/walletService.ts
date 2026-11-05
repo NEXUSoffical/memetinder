@@ -32,29 +32,43 @@ export class WalletService {
     this.listeners.forEach(fn => fn(this.state));
   }
 
+  private static readonly LAST_PROVIDER_KEY = 'memetinder_last_wallet_provider_v1';
+
   /**
    * Auto-connects if the user previously authorized the dApp
    */
   public static async autoConnect(): Promise<void> {
-    const provider = this.getProvider('phantom') || this.getProvider('solflare') || this.getProvider('injected');
-    if (!provider) return;
+    const savedType = localStorage.getItem(this.LAST_PROVIDER_KEY) as WalletProviderType | null;
+    const candidates: WalletProviderType[] = [];
+    if (savedType && ['phantom', 'solflare', 'backpack', 'injected'].includes(savedType)) {
+      candidates.push(savedType);
+    }
+    for (const t of ['phantom', 'solflare', 'backpack', 'injected'] as WalletProviderType[]) {
+      if (!candidates.includes(t)) candidates.push(t);
+    }
 
-    try {
-      if (provider.isConnected && provider.publicKey) {
-        this.setConnectedState('phantom', provider.publicKey.toString());
-        await this.refreshBalance();
-        return;
-      }
-      if (provider.connect) {
-        const resp = await provider.connect({ onlyIfTrusted: true });
-        const pubkey = resp?.publicKey?.toString() || provider.publicKey?.toString();
-        if (pubkey) {
-          this.setConnectedState('phantom', pubkey);
+    for (const candidateType of candidates) {
+      const provider = this.getProvider(candidateType);
+      if (!provider) continue;
+
+      try {
+        if (provider.isConnected && provider.publicKey) {
+          this.setConnectedState(candidateType, provider.publicKey.toString());
           await this.refreshBalance();
+          return;
         }
+        if (provider.connect) {
+          const resp = await provider.connect({ onlyIfTrusted: true });
+          const pubkey = resp?.publicKey?.toString() || provider.publicKey?.toString();
+          if (pubkey) {
+            this.setConnectedState(candidateType, pubkey);
+            await this.refreshBalance();
+            return;
+          }
+        }
+      } catch {
+        // Try next candidate
       }
-    } catch {
-      // User hasn't pre-authorized, stay disconnected
     }
   }
 
@@ -142,6 +156,7 @@ export class WalletService {
     if (provider?.disconnect) {
       try { provider.disconnect(); } catch {}
     }
+    try { localStorage.removeItem(this.LAST_PROVIDER_KEY); } catch {}
 
     this.state = {
       isConnected: false,
@@ -153,6 +168,7 @@ export class WalletService {
   }
 
   private static setConnectedState(type: WalletProviderType, pubkey: string) {
+    try { localStorage.setItem(this.LAST_PROVIDER_KEY, type); } catch {}
     this.state = {
       isConnected: true,
       providerType: type,

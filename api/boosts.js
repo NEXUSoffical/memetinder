@@ -226,8 +226,11 @@ export default async function handler(req, res) {
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
 
-      // Allow Founder Admin to remove an active boost
+      // Allow Founder Admin (verified TREASURY_WALLET) to remove an active boost
       if (body.action === 'remove_boost' && body.contractAddress) {
+        if (String(body.adminWallet || '').trim() !== TREASURY_WALLET) {
+          return res.status(403).json({ error: 'Unauthorized: Founder Treasury Wallet required' });
+        }
         const targetCa = String(body.contractAddress).trim();
         activeBoostsMap.delete(targetCa);
         removedContracts.add(targetCa);
@@ -245,7 +248,10 @@ export default async function handler(req, res) {
       }
 
       const key = String(coin.contractAddress).trim();
-      const isFounderBoost = txHash.startsWith('founder_admin_boost');
+      const isFounderBoost = txHash.startsWith('founder_admin_boost') && String(body.adminWallet || '').trim() === TREASURY_WALLET;
+      if (txHash.startsWith('founder_admin_boost') && !isFounderBoost) {
+        return res.status(403).json({ error: 'Unauthorized: Founder Treasury Wallet required for free boost' });
+      }
 
       if (!isFounderBoost && usedTxHashes.has(txHash)) {
         return res.status(409).json({ error: 'This transaction signature has already been used for a boost' });

@@ -73,10 +73,20 @@
     <div class="quick-ape-subbar">
       <div class="quick-ape-presets">
         <span style="font-size: 0.7rem; color: var(--text-subtle); font-weight: 700;">APE:</span>
-        <button class="ape-preset-btn" data-sol="0.05">0.05 S</button>
-        <button class="ape-preset-btn active" data-sol="0.10">0.1 SOL</button>
-        <button class="ape-preset-btn" data-sol="0.25">0.25 S</button>
-        <button class="ape-preset-btn" data-sol="0.50">0.5 SOL</button>
+        <button class="ape-preset-btn" data-sol="0.05">0.05</button>
+        <button class="ape-preset-btn active" data-sol="0.10">0.1</button>
+        <button class="ape-preset-btn" data-sol="0.25">0.25</button>
+        <button class="ape-preset-btn" data-sol="0.50">0.5</button>
+        <input
+          type="number"
+          id="inputCustomApeSol"
+          min="0.01"
+          max="100"
+          step="0.05"
+          placeholder="Custom"
+          title="Enter custom SOL amount"
+          style="width: 56px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; padding: 3px 7px; color: #f8fafc; font-size: 0.7rem; font-weight: 800; outline: none; text-align: center;"
+        />
       </div>
 
       <div class="auto-ape-toggle-group" id="btnAutoApeToggle" title="When ON, swiping right immediately executes a real swap via Jupiter!">

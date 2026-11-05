@@ -68,7 +68,7 @@ export class JupiterService {
     }
   }
 
-  public static recordReferralEarning(referrerWallet: string, earnedSol: number) {
+  public static recordReferralEarning(referrerWallet: string, earnedSol: number, txHash = '') {
     if (!referrerWallet || earnedSol <= 0) return;
     fetch('/api/referrals', {
       method: 'POST',
@@ -76,7 +76,8 @@ export class JupiterService {
       body: JSON.stringify({
         action: 'record_earning',
         referrerWallet,
-        earnedSol
+        earnedSol,
+        txHash
       })
     }).catch(() => {});
   }
@@ -320,7 +321,7 @@ export class JupiterService {
       }
 
       if (refSplit.referrerWallet && refSplit.referrerSol > 0) {
-        this.recordReferralEarning(refSplit.referrerWallet, refSplit.referrerSol);
+        this.recordReferralEarning(refSplit.referrerWallet, refSplit.referrerSol, signature);
       }
 
       // 5. Update wallet balance & portfolio match bag
@@ -445,7 +446,7 @@ export class JupiterService {
       }
 
       if (refSplit.referrerWallet && refSplit.referrerSol > 0) {
-        this.recordReferralEarning(refSplit.referrerWallet, refSplit.referrerSol);
+        this.recordReferralEarning(refSplit.referrerWallet, refSplit.referrerSol, signature);
       }
 
       PortfolioService.recordRealSell(coin, sellPercent, solReceived, signature);
@@ -568,11 +569,12 @@ export class JupiterService {
         );
       }
 
-      // Attach on-chain SPL Memo so boosts persist across serverless cold starts directly on Solana
+      // Attach on-chain SPL Memo so boosts & referral earnings persist across serverless cold starts directly on Solana
       if (contractAddress) {
         try {
           const memoProgramId = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-          const memoData = new TextEncoder().encode(`MT_BOOST:${contractAddress}:${boostPoints}:${durationHours}`);
+          const refMemoSuffix = referrerWallet && referrerLamports > 0 ? `|MT_REF:${referrerWallet}:${referrerLamports}` : '';
+          const memoData = new TextEncoder().encode(`MT_BOOST:${contractAddress}:${boostPoints}:${durationHours}${refMemoSuffix}`);
           tx.add(
             new TransactionInstruction({
               keys: [{ pubkey: fromPubkey, isSigner: true, isWritable: false }],
@@ -589,7 +591,7 @@ export class JupiterService {
       }
 
       if (referrerWallet && referrerLamports > 0) {
-        this.recordReferralEarning(referrerWallet, referrerLamports / 1e9);
+        this.recordReferralEarning(referrerWallet, referrerLamports / 1e9, signature);
       }
 
       WalletService.refreshBalance();

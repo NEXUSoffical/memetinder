@@ -187,11 +187,10 @@ function updateWalletUI(wallet: RealWalletState) {
       handle: customHandle
     });
 
-    // If connected wallet is the Founder Treasury Wallet, automatically reveal the Admin button
-    if (wallet.publicKey === TREASURY_WALLET) {
-      localStorage.setItem('memetinder_admin_unlocked_v1', '1');
-      const btnAdmin = document.getElementById('btnOpenAdminModal');
-      if (btnAdmin) btnAdmin.style.display = 'inline-flex';
+    // Strictly unlock Admin button ONLY when the connected wallet is the Founder Treasury Wallet
+    const btnAdmin = document.getElementById('btnOpenAdminModal');
+    if (btnAdmin) {
+      btnAdmin.style.display = wallet.publicKey === TREASURY_WALLET ? 'inline-flex' : 'none';
     }
 
     if (btnSwapLabel && (!currentSwipedMatchCoin || !btnExecuteJupiterSwap.disabled)) {
@@ -203,6 +202,9 @@ function updateWalletUI(wallet: RealWalletState) {
     
     activeWalletInfoCard.style.display = 'none';
     walletOptionsList.style.display = 'flex';
+
+    const btnAdmin = document.getElementById('btnOpenAdminModal');
+    if (btnAdmin) btnAdmin.style.display = 'none';
 
     if (btnSwapLabel) {
       btnSwapLabel.innerText = '🟣 Connect Wallet to Ape In';
@@ -630,15 +632,8 @@ function openProfileModal(coin: MemeCoin) {
       coin.change24h = Math.round(dexData.change24h * 10) / 10;
     }
 
-    let nextPrice = baselineDexPrice;
-    let nextMcap = baselineDexMcap;
-
-    // Apply subtle real-time orderflow jitter if pool snapshot is identical between 2s blocks so chart stays alive
-    if (Math.abs(nextPrice - prevPrice) < prevPrice * 0.00001) {
-      const microDelta = 1 + (Math.random() - 0.492) * 0.0022;
-      nextPrice = prevPrice * microDelta;
-      nextMcap = prevMcap * microDelta;
-    }
+    const nextPrice = baselineDexPrice;
+    const nextMcap = baselineDexMcap;
 
     const wentUp = nextMcap >= prevMcap;
     const tickColor = wentUp ? '#10b981' : '#ef4444';
@@ -1028,15 +1023,8 @@ function openMatchesModal() {
       const prevPrice = m.coin.priceUsd;
       const liveInfo = liveMap.get(m.coin.contractAddress.toLowerCase());
 
-      let nextPrice = liveInfo?.priceUsd || prevPrice;
-      let nextMcap = liveInfo?.marketCap || m.coin.marketCap;
-
-      // Apply subtle real-time orderbook tick if snapshot hasn't rotated yet so PnL streams smoothly
-      if (Math.abs(nextPrice - prevPrice) < prevPrice * 0.00001) {
-        const delta = 1 + (Math.random() - 0.49) * 0.0028;
-        nextPrice = prevPrice * delta;
-        nextMcap = Math.round(nextMcap * delta);
-      }
+      const nextPrice = liveInfo?.priceUsd || prevPrice;
+      const nextMcap = liveInfo?.marketCap || m.coin.marketCap;
 
       m.coin.priceUsd = nextPrice;
       m.coin.marketCap = nextMcap;
@@ -1485,18 +1473,46 @@ function bindActions() {
     closeWalletModal();
   });
 
-  // Quick Ape Amount Presets
+  // Quick Ape Amount Presets & Custom SOL Input
+  const inputCustomApeSol = document.getElementById('inputCustomApeSol') as HTMLInputElement | null;
   apePresetBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       apePresetBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      if (inputCustomApeSol) inputCustomApeSol.value = '';
       selectedApeSol = parseFloat(btn.getAttribute('data-sol') || '0.1');
+      if (isAutoApeMode) {
+        autoApeText.innerText = `Auto-Ape: ON (${selectedApeSol} SOL)`;
+      }
       showToast(`⚡ Quick Ape set to ${selectedApeSol} SOL`);
       if (currentSwipedMatchCoin) {
         loadJupiterQuoteForCoin(currentSwipedMatchCoin);
       }
     });
   });
+
+  if (inputCustomApeSol) {
+    const applyCustomSol = () => {
+      const val = parseFloat(inputCustomApeSol.value);
+      if (!isNaN(val) && val >= 0.005 && val <= 100) {
+        apePresetBtns.forEach(b => b.classList.remove('active'));
+        selectedApeSol = Math.round(val * 1000) / 1000;
+        if (isAutoApeMode) {
+          autoApeText.innerText = `Auto-Ape: ON (${selectedApeSol} SOL)`;
+        }
+        if (currentSwipedMatchCoin) {
+          loadJupiterQuoteForCoin(currentSwipedMatchCoin);
+        }
+      }
+    };
+    inputCustomApeSol.addEventListener('input', applyCustomSol);
+    inputCustomApeSol.addEventListener('change', () => {
+      applyCustomSol();
+      if (!isNaN(parseFloat(inputCustomApeSol.value))) {
+        showToast(`⚡ Custom Quick Ape set to ${selectedApeSol} SOL`);
+      }
+    });
+  }
 
   // Auto-Ape Toggle
   btnAutoApeToggle.addEventListener('click', () => {
@@ -1690,7 +1706,7 @@ function bindActions() {
     if (!activeBoostsQueueList) return;
     const entries = DexService.getBoostedEntries();
     const now = Date.now();
-    const isAdminUnlocked = localStorage.getItem('memetinder_admin_unlocked_v1') === '1';
+    const isAdminUnlocked = WalletService.getState().publicKey === TREASURY_WALLET;
 
     if (entries.length === 0) {
       activeBoostsQueueList.innerHTML = `
@@ -1736,8 +1752,9 @@ function bindActions() {
     activeBoostsQueueList.querySelectorAll('.btn-remove-boost-ca').forEach(btn => {
       btn.addEventListener('click', async () => {
         const ca = btn.getAttribute('data-ca') || '';
-        if (!ca) return;
-        await DexService.removeBoostedCoin(ca);
+        const adminWallet = WalletService.getState().publicKey || '';
+        if (!ca || adminWallet !== TREASURY_WALLET) return;
+        await DexService.removeBoostedCoin(ca, adminWallet);
         renderActiveBoostsQueue();
         allCoins = await DexService.getTrendingCoins(true);
         if (swipeEngine) swipeEngine.setCoins(getFilteredCoins());
@@ -2212,9 +2229,11 @@ function bindActions() {
   async function renderAdminDashboard() {
     const elWallets = document.getElementById('adminWalletsList');
     const elVisitors = document.getElementById('adminVisitorsList');
+    const adminWallet = WalletService.getState().publicKey || '';
+    if (adminWallet !== TREASURY_WALLET) return;
 
     try {
-      const res = await fetch('/api/analytics');
+      const res = await fetch(`/api/analytics?adminWallet=${encodeURIComponent(adminWallet)}`);
       if (!res.ok) return;
       const data = await res.json();
       const s = data.summary || {};
@@ -2318,6 +2337,11 @@ function bindActions() {
 
   if (btnAdminFreeBoost && inputAdminFreeBoostCa) {
     btnAdminFreeBoost.addEventListener('click', async () => {
+      const adminWallet = WalletService.getState().publicKey || '';
+      if (adminWallet !== TREASURY_WALLET) {
+        showToast('⚠️ Connect the Founder Treasury Wallet first!');
+        return;
+      }
       const ca = inputAdminFreeBoostCa.value.trim();
       if (!ca) {
         showToast('Paste a Solana token Contract Address (CA) first!');
@@ -2332,7 +2356,7 @@ function bindActions() {
         showToast('Could not find token on DexScreener. Check the CA!');
         return;
       }
-      const totalPts = DexService.saveBoostedCoin(coin, 50, 24, 'founder_admin_boost');
+      const totalPts = DexService.saveBoostedCoin(coin, 50, 24, `founder_admin_boost_${Date.now()}`, adminWallet);
       renderActiveBoostsQueue();
       const boostedDeck = DexService.getBoostedCoins();
       const boostedIds = new Set(boostedDeck.map(c => c.contractAddress));
@@ -2342,22 +2366,6 @@ function bindActions() {
       showToast(`👑 Founder Boost applied! $${coin.symbol} now has 🔥 ${totalPts}x Boost Power!`);
     });
   }
-
-  // Check if Admin mode is unlocked via URL (?admin=1 or /admin) or stored unlock
-  const checkAdminUnlock = () => {
-    const params = new URLSearchParams(window.location.search);
-    const isUrlAdmin = params.get('admin') === '1' || window.location.pathname === '/admin';
-    if (isUrlAdmin) {
-      localStorage.setItem('memetinder_admin_unlocked_v1', '1');
-    }
-    if (localStorage.getItem('memetinder_admin_unlocked_v1') === '1') {
-      if (btnOpenAdminModal) btnOpenAdminModal.style.display = 'inline-flex';
-      if (isUrlAdmin) {
-        setTimeout(() => openAdminModal(), 300);
-      }
-    }
-  };
-  checkAdminUnlock();
 
   // Escape key closes modals
   window.addEventListener('keydown', (e) => {
