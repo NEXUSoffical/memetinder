@@ -51,6 +51,9 @@
       </div>
 
       <div class="header-actions">
+        <button class="header-btn" id="btnOpenAdminModal" title="Founder Admin Analytics & Controls" style="display: none; background: rgba(16, 185, 129, 0.22); border-color: rgba(16, 185, 129, 0.55); color: #6ee7b7;">
+          <span>🛡️ Admin</span>
+        </button>
         <button class="header-icon-btn" id="btnOpenSearch" title="Paste any Contract Address (CA)">🔍</button>
         <button class="header-btn" id="btnOpenBoostModal" title="Promote & Feature Your Token on MemeTinder" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(244, 63, 94, 0.25)); border-color: rgba(245, 158, 11, 0.45); color: #fde68a;">
           <span>🚀 Boost</span>
@@ -542,6 +545,89 @@
       </div>
 
       <div id="activeReferredByBanner" style="display: none; font-size: 0.72rem; color: #cbd5e1; text-align: center; padding: 6px; border-radius: 8px; background: rgba(255,255,255,0.04);">
+      </div>
+    </div>
+  </div>
+
+  <!-- Founder Admin Analytics & Control Dashboard Modal -->
+  <div class="modal-backdrop" id="adminModalBackdrop">
+    <div class="modal-content-card" style="max-width: 520px; max-height: 88vh; overflow-y: auto;">
+      <button class="modal-close-btn" id="btnCloseAdminModal">✕</button>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; padding-right: 28px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.35rem;">🛡️</span>
+          <h2 class="matches-drawer-title" style="margin-bottom: 0;">Founder Admin Panel</h2>
+        </div>
+        <button id="btnRefreshAdminStats" style="background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.45); color: #34d399; font-size: 0.7rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; cursor: pointer;">
+          ↻ Refresh Live
+        </button>
+      </div>
+      <p style="font-size: 0.76rem; color: var(--text-muted); margin-bottom: 12px;">
+        Real-time website visitors, connected Solana wallets, and founder controls for <strong>memetinder.fun</strong>.
+      </p>
+
+      <!-- Top 6 KPI Funnel Cards -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; text-align: center; margin-bottom: 14px;">
+        <div style="background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 8px 5px;">
+          <div style="font-size: 0.6rem; color: #6ee7b7; font-weight: 800;">🟢 ONLINE (5M)</div>
+          <div id="adminKpiOnline" style="font-size: 1.1rem; font-weight: 900; color: #34d399; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 8px 5px;">
+          <div style="font-size: 0.6rem; color: var(--text-subtle); font-weight: 800;">👀 VISITORS</div>
+          <div id="adminKpiVisitors" style="font-size: 1.1rem; font-weight: 900; color: #f8fafc; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(168, 85, 247, 0.16); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 12px; padding: 8px 5px;">
+          <div style="font-size: 0.6rem; color: #d8b4fe; font-weight: 800;">🟣 WALLETS</div>
+          <div id="adminKpiWallets" style="font-size: 1.1rem; font-weight: 900; color: #e9d5ff; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 8px 5px;">
+          <div style="font-size: 0.6rem; color: var(--text-subtle); font-weight: 800;">📄 PAGEVIEWS</div>
+          <div id="adminKpiViews" style="font-size: 1rem; font-weight: 900; color: #cbd5e1; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 8px 5px;">
+          <div style="font-size: 0.6rem; color: var(--text-subtle); font-weight: 800;">🔥 SWIPES</div>
+          <div id="adminKpiSwipes" style="font-size: 1rem; font-weight: 900; color: #fb923c; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 8px 5px;">
+          <div style="font-size: 0.6rem; color: var(--text-subtle); font-weight: 800;">⚡ SWAPS</div>
+          <div id="adminKpiSwaps" style="font-size: 1rem; font-weight: 900; color: #fde68a; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+      </div>
+
+      <!-- Connected Solana Wallets Log -->
+      <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 14px; padding: 10px 12px; margin-bottom: 12px;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #d8b4fe; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between;">
+          <span>🟣 Connected Wallets (Real Users)</span>
+          <span style="color: var(--text-muted); font-size: 0.66rem;">Live SOL Balance &amp; Time</span>
+        </div>
+        <div id="adminWalletsList" style="display: flex; flex-direction: column; gap: 6px; max-height: 170px; overflow-y: auto; font-size: 0.75rem;">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+
+      <!-- Recent Website Visitors Log -->
+      <div style="background: rgba(0,0,0,0.35); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 10px 12px; margin-bottom: 12px;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between;">
+          <span>👀 Recent Website Visitors</span>
+          <span style="color: var(--text-muted); font-size: 0.66rem;">Device • Source • Status</span>
+        </div>
+        <div id="adminVisitorsList" style="display: flex; flex-direction: column; gap: 6px; max-height: 170px; overflow-y: auto; font-size: 0.74rem;">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
+
+      <!-- Founder Free Token Boost Control -->
+      <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.35); border-radius: 14px; padding: 10px 12px;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #fda4af; text-transform: uppercase; margin-bottom: 6px;">
+          🚀 Founder Free Boost (No SOL Payment Required)
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <input id="inputAdminFreeBoostCa" type="text" placeholder="Paste Solana CA to boost for free..." style="flex: 1; background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 7px 10px; color: white; font-size: 0.76rem; font-family: monospace; outline: none;" />
+          <button id="btnAdminFreeBoost" style="background: var(--primary-flame); border: none; color: white; font-size: 0.74rem; font-weight: 800; padding: 7px 12px; border-radius: 10px; cursor: pointer; white-space: nowrap;">
+            ⚡ Add +50x Boost
+          </button>
+        </div>
       </div>
     </div>
   </div>

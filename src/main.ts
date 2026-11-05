@@ -4,8 +4,45 @@ import { SwipeEngine } from './swipeEngine';
 import { SoundEngine } from './soundEngine';
 import { PortfolioService } from './portfolioService';
 import { WalletService, RealWalletState } from './walletService';
-import { JupiterService, JupiterQuote, REFERRER_STORAGE_KEY } from './jupiterService';
+import { JupiterService, JupiterQuote, REFERRER_STORAGE_KEY, TREASURY_WALLET } from './jupiterService';
 import { escapeHtml } from './utils';
+
+function getVisitorId(): string {
+  let vid = localStorage.getItem('memetinder_visitor_id_v1');
+  if (!vid) {
+    vid = `v_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+    localStorage.setItem('memetinder_visitor_id_v1', vid);
+  }
+  return vid;
+}
+
+function getTrafficSourceLabel(): string {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get('ref');
+  if (ref) return `Ref: ${ref.slice(0, 12)}`;
+  const ca = params.get('ca');
+  if (ca) return `Shared CA: ${ca.slice(0, 6)}..`;
+  if (document.referrer) {
+    try {
+      const host = new URL(document.referrer).hostname.replace('www.', '');
+      if (host && !host.includes('memetinder.fun')) return host;
+    } catch {}
+  }
+  return 'Direct';
+}
+
+function trackAnalyticsEvent(event: string, payload: Record<string, any> = {}) {
+  fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event,
+      visitorId: getVisitorId(),
+      refSource: getTrafficSourceLabel(),
+      ...payload
+    })
+  }).catch(() => {});
+}
 
 // Initialize Sound Engine
 const sound = new SoundEngine();
@@ -139,6 +176,22 @@ function updateWalletUI(wallet: RealWalletState) {
     walletModalAddress.innerText = wallet.publicKey;
     walletModalSolBal.innerText = `${wallet.solBalance.toFixed(4)} SOL`;
 
+    // Track real wallet connection for Founder Admin Panel
+    const customHandle = (localStorage.getItem('memetinder_custom_handle_v1') || '').trim();
+    trackAnalyticsEvent('wallet_connect', {
+      walletAddress: wallet.publicKey,
+      providerType: wallet.providerType || 'phantom',
+      solBalance: wallet.solBalance,
+      handle: customHandle
+    });
+
+    // If connected wallet is the Founder Treasury Wallet, automatically reveal the Admin button
+    if (wallet.publicKey === TREASURY_WALLET) {
+      localStorage.setItem('memetinder_admin_unlocked_v1', '1');
+      const btnAdmin = document.getElementById('btnOpenAdminModal');
+      if (btnAdmin) btnAdmin.style.display = 'inline-flex';
+    }
+
     if (btnSwapLabel && (!currentSwipedMatchCoin || !btnExecuteJupiterSwap.disabled)) {
       btnSwapLabel.innerText = `🔥 1-Click Ape ${selectedApeSol} SOL Now`;
     }
@@ -232,6 +285,7 @@ async function handleSwapExecution() {
 
   if (res.success && res.txHash) {
     sound.playBuy();
+    trackAnalyticsEvent('swap');
     PortfolioService.recordRealTrade(
       coin,
       selectedApeSol,
@@ -1183,6 +1237,7 @@ function updateArcadeUI() {
 }
 
 function recordArcadeSwipe(coin: MemeCoin, direction: 'left' | 'right' | 'up') {
+  trackAnalyticsEvent('swipe');
   const prevLevel = getDegenRankInfo(arcadeStats.xp).level;
   arcadeStats.streak += 1;
   if (arcadeStats.streak > arcadeStats.bestStreak) {
@@ -2037,6 +2092,174 @@ function bindActions() {
     });
   }
 
+  // Founder Admin Analytics & Controls Modal
+  const adminModalBackdrop = document.getElementById('adminModalBackdrop');
+  const btnOpenAdminModal = document.getElementById('btnOpenAdminModal');
+  const btnCloseAdminModal = document.getElementById('btnCloseAdminModal');
+  const btnRefreshAdminStats = document.getElementById('btnRefreshAdminStats');
+  const inputAdminFreeBoostCa = document.getElementById('inputAdminFreeBoostCa') as HTMLInputElement | null;
+  const btnAdminFreeBoost = document.getElementById('btnAdminFreeBoost') as HTMLButtonElement | null;
+
+  function formatTimeAgo(ts: number): string {
+    const diffSec = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return `${Math.floor(diffHr / 24)}d ago`;
+  }
+
+  async function renderAdminDashboard() {
+    const elWallets = document.getElementById('adminWalletsList');
+    const elVisitors = document.getElementById('adminVisitorsList');
+
+    try {
+      const res = await fetch('/api/analytics');
+      if (!res.ok) return;
+      const data = await res.json();
+      const s = data.summary || {};
+
+      const setTxt = (id: string, val: string | number) => {
+        const el = document.getElementById(id);
+        if (el) el.innerText = String(val);
+      };
+
+      setTxt('adminKpiOnline', s.onlineNow || 0);
+      setTxt('adminKpiVisitors', s.uniqueVisitors || 0);
+      setTxt('adminKpiWallets', s.connectedWallets || 0);
+      setTxt('adminKpiViews', s.totalPageViews || 0);
+      setTxt('adminKpiSwipes', s.totalSwipes || 0);
+      setTxt('adminKpiSwaps', s.totalSwaps || 0);
+
+      const wallets = Array.isArray(data.wallets) ? data.wallets : [];
+      if (elWallets) {
+        if (wallets.length === 0) {
+          elWallets.innerHTML = `<div style="color:var(--text-muted); text-align:center; padding:10px;">No wallets connected yet in this session window.</div>`;
+        } else {
+          elWallets.innerHTML = wallets.map((w: any) => {
+            const addr = String(w.walletAddress || '');
+            const shortAddr = `${addr.slice(0, 5)}...${addr.slice(-4)}`;
+            const handleBadge = w.handle ? `<span style="color:#fde68a; font-weight:800;">${escapeHtml(w.handle)}</span> • ` : '';
+            return `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:9px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);">
+                <div>
+                  <div style="font-weight:800; color:#f8fafc;">
+                    ${handleBadge}<a href="https://solscan.io/account/${encodeURIComponent(addr)}" target="_blank" rel="noopener" style="color:#d8b4fe; text-decoration:underline; font-family:monospace;">${escapeHtml(shortAddr)} ↗</a>
+                  </div>
+                  <div style="font-size:0.66rem; color:var(--text-muted);">
+                    ${escapeHtml(w.providerType || 'PHANTOM')} • ${escapeHtml(w.refSource || 'Direct')}
+                  </div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-weight:900; color:#34d399; font-family:monospace;">${Number(w.solBalance || 0).toFixed(3)} SOL</div>
+                  <div style="font-size:0.65rem; color:var(--text-muted);">${formatTimeAgo(w.lastSeen || Date.now())}</div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      const visitors = Array.isArray(data.visitors) ? data.visitors : [];
+      if (elVisitors) {
+        if (visitors.length === 0) {
+          elVisitors.innerHTML = `<div style="color:var(--text-muted); text-align:center; padding:10px;">No visitors recorded yet.</div>`;
+        } else {
+          elVisitors.innerHTML = visitors.map((v: any) => {
+            const hasWallet = Boolean(v.walletAddress);
+            const statusHtml = hasWallet
+              ? `<span style="color:#34d399; font-weight:800;">🟢 Wallet (${escapeHtml(String(v.walletAddress).slice(0, 4))}..)</span>`
+              : `<span style="color:#94a3b8;">👀 Browsing</span>`;
+            return `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 9px; border-radius:9px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);">
+                <div style="display:flex; align-items:center; gap:7px;">
+                  <span>${escapeHtml(v.device || '💻 Desktop')}</span>
+                  <span style="color:#e2e8f0; font-weight:700;">${escapeHtml(v.refSource || 'Direct')}</span>
+                  <span style="font-size:0.66rem; color:var(--text-muted);">(${Number(v.visitsCount || 1)} views)</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  ${statusHtml}
+                  <span style="font-size:0.66rem; color:var(--text-muted); font-family:monospace;">${formatTimeAgo(v.lastSeen || Date.now())}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    } catch {}
+  }
+
+  function openAdminModal() {
+    if (!adminModalBackdrop) return;
+    renderAdminDashboard();
+    document.body.classList.add('modal-active');
+    adminModalBackdrop.classList.add('active');
+  }
+
+  function closeAdminModal() {
+    if (!adminModalBackdrop) return;
+    document.body.classList.remove('modal-active');
+    adminModalBackdrop.classList.remove('active');
+  }
+
+  if (btnOpenAdminModal) btnOpenAdminModal.addEventListener('click', openAdminModal);
+  if (btnCloseAdminModal) btnCloseAdminModal.addEventListener('click', closeAdminModal);
+  if (btnRefreshAdminStats) {
+    btnRefreshAdminStats.addEventListener('click', () => {
+      renderAdminDashboard();
+      showToast('↻ Refreshed live visitor & wallet stats!');
+    });
+  }
+  if (adminModalBackdrop) {
+    adminModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === adminModalBackdrop) closeAdminModal();
+    });
+  }
+
+  if (btnAdminFreeBoost && inputAdminFreeBoostCa) {
+    btnAdminFreeBoost.addEventListener('click', async () => {
+      const ca = inputAdminFreeBoostCa.value.trim();
+      if (!ca) {
+        showToast('Paste a Solana token Contract Address (CA) first!');
+        return;
+      }
+      btnAdminFreeBoost.disabled = true;
+      btnAdminFreeBoost.innerText = 'Boosting...';
+      const coin = await DexService.fetchTokenByAddress(ca);
+      btnAdminFreeBoost.disabled = false;
+      btnAdminFreeBoost.innerText = '⚡ Add +50x Boost';
+      if (!coin) {
+        showToast('Could not find token on DexScreener. Check the CA!');
+        return;
+      }
+      const totalPts = DexService.saveBoostedCoin(coin, 50, 24, 'founder_admin_boost');
+      renderActiveBoostsQueue();
+      const boostedDeck = DexService.getBoostedCoins();
+      const boostedIds = new Set(boostedDeck.map(c => c.contractAddress));
+      allCoins = [...boostedDeck, ...allCoins.filter(c => !boostedIds.has(c.contractAddress))];
+      if (swipeEngine) swipeEngine.setCoins(getFilteredCoins());
+      inputAdminFreeBoostCa.value = '';
+      showToast(`👑 Founder Boost applied! $${coin.symbol} now has 🔥 ${totalPts}x Boost Power!`);
+    });
+  }
+
+  // Check if Admin mode is unlocked via URL (?admin=1 or /admin) or stored unlock
+  const checkAdminUnlock = () => {
+    const params = new URLSearchParams(window.location.search);
+    const isUrlAdmin = params.get('admin') === '1' || window.location.pathname === '/admin';
+    if (isUrlAdmin) {
+      localStorage.setItem('memetinder_admin_unlocked_v1', '1');
+    }
+    if (localStorage.getItem('memetinder_admin_unlocked_v1') === '1') {
+      if (btnOpenAdminModal) btnOpenAdminModal.style.display = 'inline-flex';
+      if (isUrlAdmin) {
+        setTimeout(() => openAdminModal(), 300);
+      }
+    }
+  };
+  checkAdminUnlock();
+
   // Escape key closes modals
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -2048,12 +2271,14 @@ function bindActions() {
       closeBoostModal();
       closeArenaModal();
       closeReferralModal();
+      closeAdminModal();
     }
   });
 }
 
 // App Bootstrapper
 async function boot() {
+  trackAnalyticsEvent('page_view');
   WalletService.onStateChange(updateWalletUI);
   WalletService.autoConnect();
 
