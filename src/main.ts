@@ -177,6 +177,7 @@ function updateWalletUI(wallet: RealWalletState) {
     walletModalSolBal.innerText = `${wallet.solBalance.toFixed(4)} SOL`;
 
     // Track real wallet connection for Founder Admin Panel
+    localStorage.setItem('memetinder_my_ref_wallet_v1', wallet.publicKey);
     const customHandle = (localStorage.getItem('memetinder_custom_handle_v1') || '').trim();
     trackAnalyticsEvent('wallet_connect', {
       walletAddress: wallet.publicKey,
@@ -1931,11 +1932,18 @@ function bindActions() {
   function getMyReferralLink(): string {
     const savedCode = (localStorage.getItem('memetinder_my_ref_code_v1') || '').trim();
     const wallet = WalletService.getState();
+    const myWallet = (wallet.isConnected && wallet.publicKey)
+      ? wallet.publicKey
+      : (localStorage.getItem('memetinder_my_ref_wallet_v1') || '').trim();
+
+    if (savedCode && myWallet) {
+      return `https://memetinder.fun/?ref=${encodeURIComponent(savedCode)}&w=${myWallet}`;
+    }
+    if (myWallet) {
+      return `https://memetinder.fun/?ref=${myWallet}`;
+    }
     if (savedCode) {
       return `https://memetinder.fun/?ref=${encodeURIComponent(savedCode)}`;
-    }
-    if (wallet.isConnected && wallet.publicKey) {
-      return `https://memetinder.fun/?ref=${wallet.publicKey}`;
     }
     return 'Connect wallet or claim a code above to generate your link';
   }
@@ -2286,10 +2294,28 @@ async function boot() {
   updateArcadeUI();
   bindActions();
 
-  // Capture ?ref= referral code or wallet address from URL
+  // Capture ?ref= referral code or wallet address (and optional &w= wallet) from URL
   const urlParams = new URLSearchParams(window.location.search);
   const refParam = (urlParams.get('ref') || '').trim();
-  if (refParam) {
+  const refWalletParam = (urlParams.get('w') || '').trim();
+
+  if (refWalletParam && refWalletParam.length >= 32 && refWalletParam.length <= 44) {
+    localStorage.setItem(REFERRER_STORAGE_KEY, refWalletParam);
+    const label = refParam ? `@${refParam}` : `${refWalletParam.slice(0, 4)}...${refWalletParam.slice(-4)}`;
+    localStorage.setItem('memetinder_referrer_label_v1', label);
+    if (refParam && refParam !== refWalletParam) {
+      fetch('/api/referrals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'register_code', walletAddress: refWalletParam, code: refParam })
+      }).catch(() => {});
+    }
+    fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'record_visit', referrerWallet: refWalletParam })
+    }).catch(() => {});
+  } else if (refParam) {
     if (refParam.length >= 32 && refParam.length <= 44 && !refParam.includes(' ')) {
       localStorage.setItem(REFERRER_STORAGE_KEY, refParam);
       localStorage.setItem('memetinder_referrer_label_v1', `${refParam.slice(0, 4)}...${refParam.slice(-4)}`);

@@ -31,6 +31,29 @@ export class JupiterService {
     'https://lite-api.jup.ag/swap/v1',
     'https://api.jup.ag/swap/v1'
   ];
+  private static referrerFundedCache = new Map<string, boolean>();
+
+  public static async isReferrerTransferSafe(referrerWallet: string | null, referrerLamports: number): Promise<boolean> {
+    if (!referrerWallet || referrerLamports <= 0) return false;
+    // Solana rent-exempt minimum for a 0-byte system account is 890,880 lamports (~0.00089088 SOL).
+    // Any transfer >= 890,880 lamports is always valid even if the recipient wallet has 0 SOL.
+    if (referrerLamports >= 890880) return true;
+    if (this.referrerFundedCache.get(referrerWallet) === true) return true;
+
+    try {
+      const res = await fetch(`/api/balance?pubkey=${encodeURIComponent(referrerWallet)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const bal = Number(data?.sol || 0);
+        if (bal >= 0.00089) {
+          this.referrerFundedCache.set(referrerWallet, true);
+          return true;
+        }
+        return false;
+      }
+    } catch {}
+    return true;
+  }
 
   public static getActiveReferrerWallet(userPubkey: string): string | null {
     try {
@@ -74,7 +97,7 @@ export class JupiterService {
   /**
    * Safely appends the 0.8% platform fee instruction (and 30% on-chain referral split if referred)
    */
-  private static attachPlatformFeeInstruction(versionedTx: VersionedTransaction, feeLamports: number, userPubkey: string): { referrerWallet: string | null; referrerSol: number } {
+  private static async attachPlatformFeeInstruction(versionedTx: VersionedTransaction, feeLamports: number, userPubkey: string): Promise<{ referrerWallet: string | null; referrerSol: number }> {
     if (feeLamports <= 0 || userPubkey === TREASURY_WALLET) {
       return { referrerWallet: null, referrerSol: 0 };
     }
@@ -98,8 +121,12 @@ export class JupiterService {
           }
         }
 
-        const referrerWallet = this.getActiveReferrerWallet(userPubkey);
-        const referrerLamports = referrerWallet ? Math.floor(feeLamports * REFERRER_SHARE) : 0;
+        const candidateReferrer = this.getActiveReferrerWallet(userPubkey);
+        const candidateLamports = candidateReferrer ? Math.floor(feeLamports * REFERRER_SHARE) : 0;
+        const canSplitToReferrer = await this.isReferrerTransferSafe(candidateReferrer, candidateLamports);
+
+        const referrerWallet = canSplitToReferrer ? candidateReferrer : null;
+        const referrerLamports = canSplitToReferrer ? candidateLamports : 0;
         const treasuryLamports = feeLamports - referrerLamports;
 
         const treasuryIdx = this.ensureWritableAccountIndex(msg, treasuryPubkey);
@@ -271,7 +298,7 @@ export class JupiterService {
       const versionedTx = VersionedTransaction.deserialize(txBytes);
 
       const feeLamports = Math.floor(solAmount * 1e9 * (PLATFORM_FEE_BPS / 10000));
-      const refSplit = this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
+      const refSplit = await this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
 
       // 4. Request user signature & broadcast on Solana Mainnet
       const { signature } = await provider.signAndSendTransaction(versionedTx);
@@ -397,7 +424,7 @@ export class JupiterService {
 
       // 4. Bundle 0.8% SOL platform fee on Sell proceeds to TREASURY_WALLET (with 30% referral split if applicable)
       const feeLamports = Math.floor(outLamports * (PLATFORM_FEE_BPS / 10000));
-      const refSplit = this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
+      const refSplit = await this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
 
       // 5. Request wallet signature & broadcast on Solana Mainnet
       const { signature } = await provider.signAndSendTransaction(versionedTx);

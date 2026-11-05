@@ -34,7 +34,8 @@ export default async function handler(req, res) {
       return res.status(200).json(stats);
     }
 
-    return res.status(200).json({ activeCodes: codesMap.size });
+    const allAffiliates = Array.from(statsMap.values()).sort((a, b) => b.totalEarnedSol - a.totalEarnedSol);
+    return res.status(200).json({ activeCodes: codesMap.size, affiliates: allAffiliates });
   }
 
   if (req.method === 'POST') {
