@@ -159,6 +159,37 @@ function updateMatchesBadge() {
   matchesCountBadge.style.display = count > 0 ? 'inline-block' : 'none';
 }
 
+let lastAutoImportedWalletKey = '';
+
+async function autoImportHeldWalletTokens(): Promise<Array<{ mint: string; rawAmount: string; decimals: number; uiAmount: number }>> {
+  const wallet = WalletService.getState();
+  if (!wallet.isConnected || !wallet.publicKey) return [];
+
+  const heldTokens = await WalletService.getAllHeldSplTokens();
+  if (heldTokens.length === 0) return [];
+
+  const existingMatches = PortfolioService.getMatches();
+  const existingAddrs = new Set(existingMatches.map(m => (m.coin.contractAddress || '').toLowerCase()));
+  const unimported = heldTokens.filter(t => t.uiAmount > 0 && !existingAddrs.has(t.mint.toLowerCase())).slice(0, 8);
+
+  if (unimported.length > 0) {
+    let importedCount = 0;
+    await Promise.all(
+      unimported.map(async (tok) => {
+        const coin = await DexService.fetchTokenByAddress(tok.mint);
+        if (coin && coin.priceUsd > 0) {
+          PortfolioService.addMatch(coin, 'ape');
+          importedCount++;
+        }
+      })
+    );
+    if (importedCount > 0) {
+      updateMatchesBadge();
+    }
+  }
+  return heldTokens;
+}
+
 // Update Real Wallet UI
 function updateWalletUI(wallet: RealWalletState) {
   if (wallet.isConnected && wallet.publicKey) {
@@ -196,7 +227,13 @@ function updateWalletUI(wallet: RealWalletState) {
     if (btnSwapLabel && (!currentSwipedMatchCoin || !btnExecuteJupiterSwap.disabled)) {
       btnSwapLabel.innerText = `🔥 1-Click Ape ${selectedApeSol} SOL Now`;
     }
+
+    if (lastAutoImportedWalletKey !== wallet.publicKey) {
+      lastAutoImportedWalletKey = wallet.publicKey;
+      autoImportHeldWalletTokens().catch(() => {});
+    }
   } else {
+    lastAutoImportedWalletKey = '';
     btnWalletToggle.classList.remove('connected');
     walletBtnLabel.innerText = '🟣 Connect Wallet';
     
@@ -733,34 +770,59 @@ function openMatchesModal() {
 
   const onChainBalances = new Map<string, number>();
 
+  let hasSyncedBagOnce = false;
+
   const syncWalletBalancesForBag = async () => {
     const wallet = WalletService.getState();
     if (!wallet.isConnected || !wallet.publicKey) return;
-    const matches = PortfolioService.getMatches();
+    const walletLabel = wallet.providerType
+      ? wallet.providerType.charAt(0).toUpperCase() + wallet.providerType.slice(1)
+      : 'Wallet';
+
+    // 1. Discover & auto-import all SPL / Token-2022 meme coins held in the connected wallet
+    const prevCount = PortfolioService.getMatches().length;
+    const heldTokens = await autoImportHeldWalletTokens();
+    for (const tok of heldTokens) {
+      onChainBalances.set(tok.mint, tok.uiAmount || 0);
+    }
+    const newMatches = PortfolioService.getMatches();
+    if (!hasSyncedBagOnce && newMatches.length > prevCount) {
+      hasSyncedBagOnce = true;
+      renderBagList();
+      return;
+    }
+    hasSyncedBagOnce = true;
+
+    // 2. Hydrate badges & verify any coins not already in the bulk heldTokens map
     await Promise.all(
-      matches.slice(0, 12).map(async (m, idx) => {
+      newMatches.slice(0, 16).map(async (m, idx) => {
         if (!m.coin.contractAddress) return;
-        const bal = await WalletService.getTokenBalance(m.coin.contractAddress);
-        onChainBalances.set(m.coin.contractAddress, bal.uiAmount || 0);
+        let uiAmount = onChainBalances.get(m.coin.contractAddress);
+        if (uiAmount === undefined) {
+          const bal = await WalletService.getTokenBalance(m.coin.contractAddress);
+          uiAmount = bal.uiAmount || 0;
+          onChainBalances.set(m.coin.contractAddress, uiAmount);
+        }
         const elHoldBadge = document.getElementById(`bagHoldBadge_${idx}`);
         if (elHoldBadge) {
-          if (bal.uiAmount > 0) {
-            const fmtBal = bal.uiAmount > 1000
-              ? bal.uiAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })
-              : bal.uiAmount.toFixed(2);
+          if (uiAmount > 0) {
+            const fmtBal = uiAmount > 1000
+              ? uiAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })
+              : uiAmount.toFixed(2);
             elHoldBadge.style.background = 'rgba(16, 185, 129, 0.2)';
             elHoldBadge.style.borderColor = 'rgba(16, 185, 129, 0.45)';
             elHoldBadge.style.color = '#6ee7b7';
-            elHoldBadge.innerText = `🟢 In Phantom: ${fmtBal} $${m.coin.symbol}`;
+            elHoldBadge.innerText = `🟢 In ${walletLabel}: ${fmtBal} $${m.coin.symbol}`;
           } else if (!m.solSpent) {
             elHoldBadge.style.background = 'rgba(245, 158, 11, 0.16)';
             elHoldBadge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
             elHoldBadge.style.color = '#fcd34d';
-            elHoldBadge.innerText = `👀 Watchlist (Not Bought in Phantom Yet)`;
+            elHoldBadge.innerText = `👀 Watchlist (Not Bought in ${walletLabel} Yet)`;
           }
         }
       })
     );
+    runBagLivePnlTick();
   };
 
   const renderBagList = () => {

@@ -1371,16 +1371,82 @@ body {
 }
 
 /* Responsive Tweaks */
-@media (max-width: 480px) {
+@media (max-width: 480px), (max-height: 780px) {
   .app-container {
     height: 100vh;
-    padding: 8px 12px 14px 12px;
+    height: 100dvh;
+    padding: 4px 10px 8px 10px;
+  }
+  .app-header {
+    padding: 4px 0;
+    margin-bottom: 4px;
+    gap: 6px;
+  }
+  .brand-logo-img {
+    width: 32px;
+    height: 32px;
+  }
+  .brand-text {
+    font-size: 1.15rem;
+  }
+  .header-btn {
+    padding: 5px 8px;
+    font-size: 0.72rem;
+  }
+  .header-icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 0.85rem;
+  }
+  .quick-ape-subbar {
+    padding: 4px 8px;
+    margin-bottom: 4px;
+  }
+  #degenArcadeBar {
+    padding: 3px 8px !important;
+    margin-bottom: 4px !important;
+  }
+  #liveBoostFeedBar {
+    padding: 3px 8px !important;
+    margin-bottom: 4px !important;
+  }
+  .chain-filter-bar {
+    margin-bottom: 4px;
+    gap: 5px;
+    padding-bottom: 2px;
+  }
+  .filter-chip {
+    padding: 4px 9px;
+    font-size: 0.7rem;
   }
   .card-media-wrapper {
-    height: 48%;
+    height: 44%;
   }
   .card-avatar-img {
-    width: 140px;
-    height: 140px;
+    width: 124px;
+    height: 124px;
+  }
+  .card-info-section {
+    padding: 12px 14px;
+    gap: 7px;
+  }
+  .tinder-actions-bar {
+    padding: 6px 0 2px 0;
+    gap: 10px;
+  }
+  .btn-pass, .btn-ape {
+    width: 54px;
+    height: 54px;
+    font-size: 1.35rem;
+  }
+  .btn-superlike {
+    width: 44px;
+    height: 44px;
+    font-size: 1.1rem;
+  }
+  .btn-rewind, .btn-boost {
+    width: 38px;
+    height: 38px;
+    font-size: 0.95rem;
   }
 }

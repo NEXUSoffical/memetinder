@@ -299,4 +299,94 @@ export class WalletService {
 
     return { rawAmount: '0', decimals: 6, uiAmount: 0 };
   }
+
+  /**
+   * Queries all non-zero SPL Token & Token-2022 balances held by the connected wallet
+   * (excluding wrapped SOL, USDC, and USDT) so existing bags auto-import into MemeTinder.
+   */
+  public static async getAllHeldSplTokens(): Promise<Array<{ mint: string; rawAmount: string; decimals: number; uiAmount: number }>> {
+    if (!this.state.publicKey) return [];
+    const owner = this.state.publicKey;
+    const EXCLUDED_MINTS = new Set([
+      'So11111111111111111111111111111111111111112',
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'
+    ]);
+
+    try {
+      const res = await fetch('https://solana-rpc.publicnode.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([
+          {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getTokenAccountsByOwner',
+            params: [
+              owner,
+              { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' },
+              { encoding: 'jsonParsed', commitment: 'confirmed' }
+            ]
+          },
+          {
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'getTokenAccountsByOwner',
+            params: [
+              owner,
+              { programId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' },
+              { encoding: 'jsonParsed', commitment: 'confirmed' }
+            ]
+          }
+        ])
+      });
+
+      if (res.ok) {
+        const batch = await res.json();
+        if (Array.isArray(batch)) {
+          const byMint = new Map<string, { mint: string; rawBig: bigint; decimals: number; uiAmount: number }>();
+          for (const item of batch) {
+            const accounts = item?.result?.value;
+            if (!Array.isArray(accounts)) continue;
+            for (const acc of accounts) {
+              const parsed = acc?.account?.data?.parsed?.info;
+              const mint = parsed?.mint;
+              const tokenAmount = parsed?.tokenAmount;
+              if (!mint || EXCLUDED_MINTS.has(mint) || !tokenAmount) continue;
+              const uiAmount = Number(tokenAmount.uiAmount || 0);
+              if (uiAmount <= 0) continue;
+              const decimals = tokenAmount.decimals ?? 6;
+              const rawBig = BigInt(tokenAmount.amount || '0');
+              const existing = byMint.get(mint);
+              if (existing) {
+                existing.rawBig += rawBig;
+                existing.uiAmount += uiAmount;
+              } else {
+                byMint.set(mint, { mint, rawBig, decimals, uiAmount });
+              }
+            }
+          }
+          return Array.from(byMint.values()).map(t => ({
+            mint: t.mint,
+            rawAmount: t.rawBig.toString(),
+            decimals: t.decimals,
+            uiAmount: t.uiAmount
+          }));
+        }
+      }
+    } catch {}
+
+    // Serverless fallback
+    try {
+      const apiRes = await fetch(`/api/token-balance?owner=${encodeURIComponent(owner)}`);
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (Array.isArray(data?.tokens)) {
+          return data.tokens;
+        }
+      }
+    } catch {}
+
+    return [];
+  }
 }
