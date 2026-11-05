@@ -4,7 +4,7 @@ import { SwipeEngine } from './swipeEngine';
 import { SoundEngine } from './soundEngine';
 import { PortfolioService } from './portfolioService';
 import { WalletService, RealWalletState } from './walletService';
-import { JupiterService, JupiterQuote } from './jupiterService';
+import { JupiterService, JupiterQuote, REFERRER_STORAGE_KEY } from './jupiterService';
 import { escapeHtml } from './utils';
 
 // Initialize Sound Engine
@@ -1527,7 +1527,52 @@ function bindActions() {
   let selectedBoostHours = 24;
   let selectedBoostLabel = '🔥 +30x Super Boost';
 
+  const liveBoostFeedItems = document.getElementById('liveBoostFeedItems') as HTMLElement | null;
+  const btnBoostFeedAdd = document.getElementById('btnBoostFeedAdd') as HTMLButtonElement | null;
+
+  function renderLiveBoostFeedBar() {
+    if (!liveBoostFeedItems) return;
+    const entries = DexService.getBoostedEntries();
+    if (entries.length === 0) {
+      liveBoostFeedItems.innerHTML = `
+        <span id="liveBoostEmptyCta" style="color: #fda4af; font-weight: 700; cursor: pointer;">
+          No tokens boosted right now — Tap to feature your coin at #1!
+        </span>
+      `;
+      const emptyCta = document.getElementById('liveBoostEmptyCta');
+      if (emptyCta) emptyCta.addEventListener('click', openBoostModal);
+      return;
+    }
+
+    liveBoostFeedItems.innerHTML = entries.map((entry, idx) => {
+      const crown = idx === 0 ? '👑 #1' : idx === 1 ? '⚡ #2' : `🔥 #${idx + 1}`;
+      return `
+        <button class="boost-feed-pill-btn" data-boost-ca="${escapeHtml(entry.contractAddress)}" style="background: rgba(244, 63, 94, 0.22); border: 1px solid rgba(251, 191, 36, 0.5); color: #fff; font-size: 0.7rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;">
+          <span style="color: #fde68a;">${crown}</span>
+          <span>$${escapeHtml(entry.coin.symbol)}</span>
+          <span style="color: #fda4af; font-size: 0.65rem;">${entry.boostPoints}x</span>
+        </button>
+      `;
+    }).join('');
+
+    liveBoostFeedItems.querySelectorAll('.boost-feed-pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ca = btn.getAttribute('data-boost-ca') || '';
+        const found = entries.find(e => e.contractAddress === ca);
+        if (found) {
+          openProfileModal(found.coin);
+        }
+      });
+    });
+  }
+
+  if (btnBoostFeedAdd) {
+    btnBoostFeedAdd.addEventListener('click', openBoostModal);
+  }
+  renderLiveBoostFeedBar();
+
   function renderActiveBoostsQueue() {
+    renderLiveBoostFeedBar();
     if (!activeBoostsQueueList) return;
     const entries = DexService.getBoostedEntries();
     const now = Date.now();
@@ -1816,6 +1861,182 @@ function bindActions() {
     });
   }
 
+  // On-Chain 30% Referral Code & Affiliate Modal
+  const referralModalBackdrop = document.getElementById('referralModalBackdrop');
+  const btnOpenReferralModal = document.getElementById('btnOpenReferralModal');
+  const btnCloseReferralModal = document.getElementById('btnCloseReferralModal');
+  const inputCustomRefCode = document.getElementById('inputCustomRefCode') as HTMLInputElement | null;
+  const btnSaveCustomRefCode = document.getElementById('btnSaveCustomRefCode') as HTMLButtonElement | null;
+  const refShareUrlDisplay = document.getElementById('refShareUrlDisplay');
+  const btnCopyRefLink = document.getElementById('btnCopyRefLink');
+  const btnShareRefX = document.getElementById('btnShareRefX');
+  const refWalletStatusHint = document.getElementById('refWalletStatusHint');
+  const activeReferredByBanner = document.getElementById('activeReferredByBanner');
+
+  function getMyReferralLink(): string {
+    const savedCode = (localStorage.getItem('memetinder_my_ref_code_v1') || '').trim();
+    const wallet = WalletService.getState();
+    if (savedCode) {
+      return `https://memetinder.fun/?ref=${encodeURIComponent(savedCode)}`;
+    }
+    if (wallet.isConnected && wallet.publicKey) {
+      return `https://memetinder.fun/?ref=${wallet.publicKey}`;
+    }
+    return 'Connect wallet or claim a code above to generate your link';
+  }
+
+  async function renderReferralModal() {
+    const wallet = WalletService.getState();
+    const savedCode = (localStorage.getItem('memetinder_my_ref_code_v1') || '').trim();
+    if (inputCustomRefCode && savedCode && !inputCustomRefCode.value) {
+      inputCustomRefCode.value = savedCode;
+    }
+
+    if (refShareUrlDisplay) {
+      refShareUrlDisplay.innerText = getMyReferralLink();
+    }
+
+    if (refWalletStatusHint) {
+      if (wallet.isConnected && wallet.publicKey) {
+        refWalletStatusHint.innerHTML = `🟢 Connected: <strong style="color:#34d399;">${wallet.publicKey.slice(0, 6)}...${wallet.publicKey.slice(-4)}</strong> (30% fee splits route directly here on-chain)`;
+      } else {
+        refWalletStatusHint.innerHTML = `⚠️ Connect your Solana wallet first so 30% SOL fee payouts route straight to your wallet.`;
+      }
+    }
+
+    const referredByWallet = (localStorage.getItem(REFERRER_STORAGE_KEY) || '').trim();
+    const referredByLabel = (localStorage.getItem('memetinder_referrer_label_v1') || '').trim();
+    if (activeReferredByBanner) {
+      if (referredByWallet) {
+        activeReferredByBanner.style.display = 'block';
+        activeReferredByBanner.innerHTML = `🔗 Active Referrer: <strong style="color:#34d399;">${escapeHtml(referredByLabel || (referredByWallet.slice(0, 4) + '...' + referredByWallet.slice(-4)))}</strong>`;
+      } else {
+        activeReferredByBanner.style.display = 'none';
+      }
+    }
+
+    if (wallet.isConnected && wallet.publicKey) {
+      try {
+        const res = await fetch(`/api/referrals?wallet=${encodeURIComponent(wallet.publicKey)}`);
+        if (res.ok) {
+          const stats = await res.json();
+          const elUsers = document.getElementById('refStatUsers');
+          const elTrades = document.getElementById('refStatTrades');
+          const elSol = document.getElementById('refStatSol');
+          if (elUsers) elUsers.innerText = String(stats.referralsCount || 0);
+          if (elTrades) elTrades.innerText = String(stats.totalTrades || 0);
+          if (elSol) elSol.innerText = `${Number(stats.totalEarnedSol || 0).toFixed(4)} SOL`;
+          if (stats.code && !savedCode) {
+            localStorage.setItem('memetinder_my_ref_code_v1', stats.code);
+            if (inputCustomRefCode) inputCustomRefCode.value = stats.code;
+            if (refShareUrlDisplay) refShareUrlDisplay.innerText = getMyReferralLink();
+          }
+        }
+      } catch {}
+    }
+  }
+
+  function openReferralModal() {
+    if (!referralModalBackdrop) return;
+    renderReferralModal();
+    document.body.classList.add('modal-active');
+    referralModalBackdrop.classList.add('active');
+  }
+
+  function closeReferralModal() {
+    if (!referralModalBackdrop) return;
+    document.body.classList.remove('modal-active');
+    referralModalBackdrop.classList.remove('active');
+  }
+
+  if (btnOpenReferralModal) btnOpenReferralModal.addEventListener('click', openReferralModal);
+  if (btnCloseReferralModal) btnCloseReferralModal.addEventListener('click', closeReferralModal);
+  if (referralModalBackdrop) {
+    referralModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === referralModalBackdrop) closeReferralModal();
+    });
+  }
+
+  if (btnSaveCustomRefCode && inputCustomRefCode) {
+    const saveRefCode = async () => {
+      const wallet = WalletService.getState();
+      if (!wallet.isConnected || !wallet.publicKey) {
+        closeReferralModal();
+        openWalletModal();
+        showToast('Connect your Solana wallet first to link your custom referral code!');
+        return;
+      }
+
+      const rawCode = inputCustomRefCode.value.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 18);
+      if (rawCode.length < 2) {
+        showToast('Please enter at least 2 characters for your referral code!');
+        return;
+      }
+
+      btnSaveCustomRefCode.disabled = true;
+      btnSaveCustomRefCode.innerText = 'Saving...';
+      try {
+        const res = await fetch('/api/referrals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'register_code',
+            walletAddress: wallet.publicKey,
+            code: rawCode
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(`⚠️ ${data?.error || 'Could not save code'}`);
+        } else {
+          localStorage.setItem('memetinder_my_ref_code_v1', rawCode);
+          showToast(`💰 Referral code "${rawCode}" linked to your wallet!`);
+          renderReferralModal();
+        }
+      } catch {
+        localStorage.setItem('memetinder_my_ref_code_v1', rawCode);
+        showToast(`💰 Referral code "${rawCode}" saved!`);
+        renderReferralModal();
+      } finally {
+        btnSaveCustomRefCode.disabled = false;
+        btnSaveCustomRefCode.innerText = 'Save Code';
+      }
+    };
+
+    btnSaveCustomRefCode.addEventListener('click', saveRefCode);
+    inputCustomRefCode.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') saveRefCode();
+    });
+  }
+
+  if (btnCopyRefLink) {
+    btnCopyRefLink.addEventListener('click', () => {
+      const link = getMyReferralLink();
+      if (!link.startsWith('http')) {
+        closeReferralModal();
+        openWalletModal();
+        showToast('Connect your Solana wallet first to get your 30% referral link!');
+        return;
+      }
+      navigator.clipboard.writeText(link);
+      showToast('📋 Copied your 30% SOL Referral Link!');
+    });
+  }
+
+  if (btnShareRefX) {
+    btnShareRefX.addEventListener('click', () => {
+      const link = getMyReferralLink();
+      if (!link.startsWith('http')) {
+        closeReferralModal();
+        openWalletModal();
+        showToast('Connect your Solana wallet first to share your referral link!');
+        return;
+      }
+      const text = `Stop doom-scrolling charts. Swipe right to 1-Click Ape trending Solana memecoins on @MemeTinderr 🔥🐸\n\nSwipe & Trade here:\n${link}`;
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, '_blank');
+    });
+  }
+
   // Escape key closes modals
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -1826,6 +2047,7 @@ function bindActions() {
       closeSearchModal();
       closeBoostModal();
       closeArenaModal();
+      closeReferralModal();
     }
   });
 }
@@ -1839,11 +2061,65 @@ async function boot() {
   updateArcadeUI();
   bindActions();
 
+  // Capture ?ref= referral code or wallet address from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const refParam = (urlParams.get('ref') || '').trim();
+  if (refParam) {
+    if (refParam.length >= 32 && refParam.length <= 44 && !refParam.includes(' ')) {
+      localStorage.setItem(REFERRER_STORAGE_KEY, refParam);
+      localStorage.setItem('memetinder_referrer_label_v1', `${refParam.slice(0, 4)}...${refParam.slice(-4)}`);
+      fetch('/api/referrals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'record_visit', referrerWallet: refParam })
+      }).catch(() => {});
+    } else {
+      fetch(`/api/referrals?code=${encodeURIComponent(refParam)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.found && data?.walletAddress) {
+            localStorage.setItem(REFERRER_STORAGE_KEY, data.walletAddress);
+            localStorage.setItem('memetinder_referrer_label_v1', `@${data.code}`);
+            fetch('/api/referrals', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'record_visit', referrerWallet: data.walletAddress })
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  }
+
   // Load coins from DexService (live DexScreener top boosts + new trending)
   allCoins = await DexService.getTrendingCoins();
 
+  // Refresh live boost feed bar once server boosts have synced
+  const boostTrigger = document.getElementById('liveBoostFeedItems');
+  if (boostTrigger) {
+    const entries = DexService.getBoostedEntries();
+    if (entries.length > 0) {
+      boostTrigger.innerHTML = entries.map((entry, idx) => {
+        const crown = idx === 0 ? '👑 #1' : idx === 1 ? '⚡ #2' : `🔥 #${idx + 1}`;
+        return `
+          <button class="boost-feed-pill-btn" data-boost-ca="${escapeHtml(entry.contractAddress)}" style="background: rgba(244, 63, 94, 0.22); border: 1px solid rgba(251, 191, 36, 0.5); color: #fff; font-size: 0.7rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;">
+            <span style="color: #fde68a;">${crown}</span>
+            <span>$${escapeHtml(entry.coin.symbol)}</span>
+            <span style="color: #fda4af; font-size: 0.65rem;">${entry.boostPoints}x</span>
+          </button>
+        `;
+      }).join('');
+      boostTrigger.querySelectorAll('.boost-feed-pill-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const ca = btn.getAttribute('data-boost-ca') || '';
+          const found = entries.find(e => e.contractAddress === ca);
+          if (found) openProfileModal(found.coin);
+        });
+      });
+    }
+  }
+
   // Deep-link direct CA import from query param ?ca=
-  const urlParams = new URLSearchParams(window.location.search);
   const directCa = urlParams.get('ca');
   if (directCa) {
     showToast(`🔍 Loading shared token ${directCa.slice(0, 6)}...`);

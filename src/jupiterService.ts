@@ -6,6 +6,8 @@ import { PortfolioService } from './portfolioService';
 export const SOL_MINT = 'So11111111111111111111111111111111111111112';
 export const TREASURY_WALLET = 'EEjAgWkw5vVgFPvCS31TPhmAXeYjFrSt4awZNfDFsE9V';
 export const PLATFORM_FEE_BPS = 80; // 0.8% platform fee on 1-Click Swaps
+export const REFERRER_SHARE = 0.30; // 30% of fees go directly to the referrer wallet on-chain
+export const REFERRER_STORAGE_KEY = 'memetinder_referrer_wallet_v1';
 
 export interface JupiterQuote {
   inAmountSol: number;
@@ -30,11 +32,52 @@ export class JupiterService {
     'https://api.jup.ag/swap/v1'
   ];
 
+  public static getActiveReferrerWallet(userPubkey: string): string | null {
+    try {
+      const refWallet = (localStorage.getItem(REFERRER_STORAGE_KEY) || '').trim();
+      if (!refWallet || refWallet === userPubkey || refWallet === TREASURY_WALLET) return null;
+      // Validate valid base58 Solana PublicKey
+      new PublicKey(refWallet);
+      return refWallet;
+    } catch {
+      return null;
+    }
+  }
+
+  public static recordReferralEarning(referrerWallet: string, earnedSol: number) {
+    if (!referrerWallet || earnedSol <= 0) return;
+    fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'record_earning',
+        referrerWallet,
+        earnedSol
+      })
+    }).catch(() => {});
+  }
+
+  private static ensureWritableAccountIndex(msg: any, targetPubkey: PublicKey): number {
+    let idx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(targetPubkey));
+    if (idx === -1) {
+      const insertIdx = msg.staticAccountKeys.length - msg.header.numReadonlyUnsignedAccounts;
+      msg.staticAccountKeys.splice(insertIdx, 0, targetPubkey);
+      for (const ix of msg.compiledInstructions) {
+        if (ix.programIdIndex >= insertIdx) ix.programIdIndex += 1;
+        ix.accountKeyIndexes = ix.accountKeyIndexes.map((kIdx: number) => kIdx >= insertIdx ? kIdx + 1 : kIdx);
+      }
+      idx = insertIdx;
+    }
+    return idx;
+  }
+
   /**
-   * Safely appends the 0.8% platform fee instruction and bumps ComputeUnitLimit so it never fails on-chain
+   * Safely appends the 0.8% platform fee instruction (and 30% on-chain referral split if referred)
    */
-  private static attachPlatformFeeInstruction(versionedTx: VersionedTransaction, feeLamports: number, userPubkey: string) {
-    if (feeLamports <= 0 || userPubkey === TREASURY_WALLET) return;
+  private static attachPlatformFeeInstruction(versionedTx: VersionedTransaction, feeLamports: number, userPubkey: string): { referrerWallet: string | null; referrerSol: number } {
+    if (feeLamports <= 0 || userPubkey === TREASURY_WALLET) {
+      return { referrerWallet: null, referrerSol: 0 };
+    }
     try {
       const msg = versionedTx.message as any;
       const treasuryPubkey = new PublicKey(TREASURY_WALLET);
@@ -43,45 +86,65 @@ export class JupiterService {
       const sysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
 
       if (sysIdx !== -1 && Array.isArray(msg.compiledInstructions)) {
-        // Bump SetComputeUnitLimit (ix discriminator 0x02) by +20,000 CU so extra transfer never hits CU cap
+        // Bump SetComputeUnitLimit (ix discriminator 0x02) by +25,000 CU so extra transfer(s) never hit CU cap
         const cbIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(computeBudgetPubkey));
         if (cbIdx !== -1) {
           for (const ix of msg.compiledInstructions) {
             if (ix.programIdIndex === cbIdx && ix.data && ix.data.length === 5 && ix.data[0] === 2) {
               const view = new DataView(ix.data.buffer, ix.data.byteOffset, ix.data.byteLength);
               const currentUnits = view.getUint32(1, true);
-              view.setUint32(1, currentUnits + 20000, true);
+              view.setUint32(1, currentUnits + 25000, true);
             }
           }
         }
 
-        let treasuryIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(treasuryPubkey));
-        if (treasuryIdx === -1) {
-          const insertIdx = msg.staticAccountKeys.length - msg.header.numReadonlyUnsignedAccounts;
-          msg.staticAccountKeys.splice(insertIdx, 0, treasuryPubkey);
-          for (const ix of msg.compiledInstructions) {
-            if (ix.programIdIndex >= insertIdx) ix.programIdIndex += 1;
-            ix.accountKeyIndexes = ix.accountKeyIndexes.map((idx: number) => idx >= insertIdx ? idx + 1 : idx);
-          }
-          treasuryIdx = insertIdx;
+        const referrerWallet = this.getActiveReferrerWallet(userPubkey);
+        const referrerLamports = referrerWallet ? Math.floor(feeLamports * REFERRER_SHARE) : 0;
+        const treasuryLamports = feeLamports - referrerLamports;
+
+        const treasuryIdx = this.ensureWritableAccountIndex(msg, treasuryPubkey);
+        let referrerIdx = -1;
+        let referrerPubkey: PublicKey | null = null;
+        if (referrerWallet && referrerLamports > 0) {
+          referrerPubkey = new PublicKey(referrerWallet);
+          referrerIdx = this.ensureWritableAccountIndex(msg, referrerPubkey);
         }
 
         const finalSysIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(sysPubkey));
-        const transferIx = SystemProgram.transfer({
-          fromPubkey: msg.staticAccountKeys[0],
-          toPubkey: treasuryPubkey,
-          lamports: feeLamports
-        });
+        const finalTreasuryIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(treasuryPubkey));
 
-        msg.compiledInstructions.push({
-          programIdIndex: finalSysIdx,
-          accountKeyIndexes: [0, treasuryIdx],
-          data: Uint8Array.from(transferIx.data)
-        });
+        if (treasuryLamports > 0) {
+          const transferIx = SystemProgram.transfer({
+            fromPubkey: msg.staticAccountKeys[0],
+            toPubkey: treasuryPubkey,
+            lamports: treasuryLamports
+          });
+          msg.compiledInstructions.push({
+            programIdIndex: finalSysIdx,
+            accountKeyIndexes: [0, finalTreasuryIdx !== -1 ? finalTreasuryIdx : treasuryIdx],
+            data: Uint8Array.from(transferIx.data)
+          });
+        }
+
+        if (referrerPubkey && referrerLamports > 0) {
+          const finalRefIdx = msg.staticAccountKeys.findIndex((k: PublicKey) => k.equals(referrerPubkey!));
+          const refTransferIx = SystemProgram.transfer({
+            fromPubkey: msg.staticAccountKeys[0],
+            toPubkey: referrerPubkey,
+            lamports: referrerLamports
+          });
+          msg.compiledInstructions.push({
+            programIdIndex: finalSysIdx,
+            accountKeyIndexes: [0, finalRefIdx !== -1 ? finalRefIdx : referrerIdx],
+            data: Uint8Array.from(refTransferIx.data)
+          });
+          return { referrerWallet, referrerSol: referrerLamports / 1e9 };
+        }
       }
     } catch (feeErr) {
       console.warn('Skipping platform fee instruction fallback:', feeErr);
     }
+    return { referrerWallet: null, referrerSol: 0 };
   }
 
   /**
@@ -208,13 +271,17 @@ export class JupiterService {
       const versionedTx = VersionedTransaction.deserialize(txBytes);
 
       const feeLamports = Math.floor(solAmount * 1e9 * (PLATFORM_FEE_BPS / 10000));
-      this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
+      const refSplit = this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
 
       // 4. Request user signature & broadcast on Solana Mainnet
       const { signature } = await provider.signAndSendTransaction(versionedTx);
 
       if (!signature) {
         return { success: false, message: 'Wallet did not return a transaction signature.' };
+      }
+
+      if (refSplit.referrerWallet && refSplit.referrerSol > 0) {
+        this.recordReferralEarning(refSplit.referrerWallet, refSplit.referrerSol);
       }
 
       // 5. Update wallet balance & portfolio match bag
@@ -328,14 +395,18 @@ export class JupiterService {
       const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
       const versionedTx = VersionedTransaction.deserialize(txBytes);
 
-      // 4. Bundle 0.8% SOL platform fee on Sell proceeds to TREASURY_WALLET
+      // 4. Bundle 0.8% SOL platform fee on Sell proceeds to TREASURY_WALLET (with 30% referral split if applicable)
       const feeLamports = Math.floor(outLamports * (PLATFORM_FEE_BPS / 10000));
-      this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
+      const refSplit = this.attachPlatformFeeInstruction(versionedTx, feeLamports, wallet.publicKey);
 
       // 5. Request wallet signature & broadcast on Solana Mainnet
       const { signature } = await provider.signAndSendTransaction(versionedTx);
       if (!signature) {
         return { success: false, message: 'Wallet did not return a transaction signature.' };
+      }
+
+      if (refSplit.referrerWallet && refSplit.referrerSol > 0) {
+        this.recordReferralEarning(refSplit.referrerWallet, refSplit.referrerSol);
       }
 
       PortfolioService.recordRealSell(coin, sellPercent, solReceived, signature);
@@ -410,7 +481,11 @@ export class JupiterService {
 
       const fromPubkey = new PublicKey(wallet.publicKey);
       const toPubkey = new PublicKey(TREASURY_WALLET);
-      const lamports = Math.round(solAmount * 1e9);
+      const totalLamports = Math.round(solAmount * 1e9);
+
+      const referrerWallet = this.getActiveReferrerWallet(wallet.publicKey);
+      const referrerLamports = referrerWallet ? Math.floor(totalLamports * REFERRER_SHARE) : 0;
+      const treasuryLamports = totalLamports - referrerLamports;
 
       const tx = new Transaction();
       tx.recentBlockhash = blockhash as any;
@@ -419,13 +494,27 @@ export class JupiterService {
         SystemProgram.transfer({
           fromPubkey,
           toPubkey,
-          lamports
+          lamports: treasuryLamports
         })
       );
+
+      if (referrerWallet && referrerLamports > 0) {
+        tx.add(
+          SystemProgram.transfer({
+            fromPubkey,
+            toPubkey: new PublicKey(referrerWallet),
+            lamports: referrerLamports
+          })
+        );
+      }
 
       const { signature } = await provider.signAndSendTransaction(tx);
       if (!signature) {
         return { success: false, message: 'Wallet did not return a transaction signature.' };
+      }
+
+      if (referrerWallet && referrerLamports > 0) {
+        this.recordReferralEarning(referrerWallet, referrerLamports / 1e9);
       }
 
       WalletService.refreshBalance();

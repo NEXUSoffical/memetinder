@@ -92,14 +92,30 @@
         <span id="degenXpText" style="font-size: 0.66rem; font-family: monospace; color: #cbd5e1; font-weight: 700;">0 XP</span>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-        <span id="degenStreakPill" title="Current Swipe Streak" style="font-size: 0.7rem; font-weight: 800; background: rgba(251, 146, 60, 0.18); border: 1px solid rgba(251, 146, 60, 0.4); color: #fdba74; padding: 2px 7px; border-radius: 999px;">
+      <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+        <span id="degenStreakPill" title="Current Swipe Streak" style="font-size: 0.68rem; font-weight: 800; background: rgba(251, 146, 60, 0.18); border: 1px solid rgba(251, 146, 60, 0.4); color: #fdba74; padding: 2px 6px; border-radius: 999px;">
           🔥 0x
         </span>
-        <button id="btnOpenMysterySpin" title="Open Trench Rank & Leaderboard!" style="background: linear-gradient(135deg, #a855f7, #ec4899); border: none; color: white; font-size: 0.7rem; font-weight: 800; padding: 3px 9px; border-radius: 999px; cursor: pointer; box-shadow: 0 2px 10px rgba(168, 85, 247, 0.45); display: flex; align-items: center; gap: 4px;">
-          <span>🏆 Leaderboard</span>
+        <button id="btnOpenReferralModal" title="Earn 30% SOL on Referred Swaps & Boosts!" style="background: linear-gradient(135deg, #10b981, #059669); border: none; color: white; font-size: 0.68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; cursor: pointer; box-shadow: 0 2px 10px rgba(16, 185, 129, 0.4); display: flex; align-items: center; gap: 3px;">
+          <span>💰 30% Refer</span>
+        </button>
+        <button id="btnOpenMysterySpin" title="Open Trench Rank & Leaderboard!" style="background: linear-gradient(135deg, #a855f7, #ec4899); border: none; color: white; font-size: 0.68rem; font-weight: 800; padding: 3px 8px; border-radius: 999px; cursor: pointer; box-shadow: 0 2px 10px rgba(168, 85, 247, 0.45); display: flex; align-items: center; gap: 3px;">
+          <span>🏆 Rank</span>
         </button>
       </div>
+    </div>
+
+    <!-- Live Boost Feed Ticker Bar -->
+    <div id="liveBoostFeedBar" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: linear-gradient(90deg, rgba(244, 63, 94, 0.16), rgba(245, 158, 11, 0.14)); border: 1px solid rgba(245, 158, 11, 0.38); border-radius: 11px; padding: 5px 9px; margin-bottom: 6px; overflow: hidden;">
+      <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+        <span style="font-size: 0.68rem; font-weight: 900; color: #fde68a; letter-spacing: 0.3px; white-space: nowrap;">🔥 BOOST FEED:</span>
+      </div>
+      <div id="liveBoostFeedItems" style="display: flex; align-items: center; gap: 6px; overflow-x: auto; flex: 1; scrollbar-width: none; white-space: nowrap; font-size: 0.72rem;">
+        <span id="liveBoostEmptyCta" style="color: #fda4af; font-weight: 700; cursor: pointer;">No tokens boosted right now — Tap to feature your coin at #1!</span>
+      </div>
+      <button id="btnBoostFeedAdd" style="background: rgba(245, 158, 11, 0.25); border: 1px solid rgba(245, 158, 11, 0.55); color: #fde68a; font-size: 0.66rem; font-weight: 900; padding: 2px 7px; border-radius: 999px; cursor: pointer; flex-shrink: 0;">
+        + Boost
+      </button>
     </div>
 
     <!-- Filter Bar -->
@@ -453,11 +469,79 @@
       <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 10px 12px;">
         <div style="font-size: 0.72rem; font-weight: 800; color: #e2e8f0; text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between;">
           <span>🏆 Today's Top Trench Swipers</span>
-          <span style="color: #fde68a;">👑 $MATCH Rewards Pool</span>
+          <span style="color: #fde68a;">🔥 Live XP Rankings</span>
         </div>
         <div id="arenaLeaderboardList" style="display: flex; flex-direction: column; gap: 6px; font-size: 0.78rem;">
           <!-- Injected dynamically -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- On-Chain 30% Referral Code & Affiliate Modal -->
+  <div class="modal-backdrop" id="referralModalBackdrop">
+    <div class="modal-content-card" style="max-width: 460px;">
+      <button class="modal-close-btn" id="btnCloseReferralModal">✕</button>
+
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <span style="font-size: 1.4rem;">💰</span>
+        <h2 class="matches-drawer-title" style="margin-bottom: 0;">Refer &amp; Earn 30% SOL</h2>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+        Earn <strong style="color: #34d399;">30% of all Swap Fees</strong> + <strong style="color: #fde68a;">30% of all Token Boosts</strong> from anyone who uses your referral code—paid <strong>instantly &amp; automatically on-chain</strong> directly into your Solana wallet!
+      </p>
+
+      <!-- Live Referral Earnings Stats -->
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin-bottom: 14px;">
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 9px 6px;">
+          <div style="font-size: 0.62rem; color: var(--text-subtle); font-weight: 700;">REFERRED USERS</div>
+          <div id="refStatUsers" style="font-size: 1.05rem; font-weight: 900; color: #f8fafc; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 9px 6px;">
+          <div style="font-size: 0.62rem; color: var(--text-subtle); font-weight: 700;">FEE PAYOUTS</div>
+          <div id="refStatTrades" style="font-size: 1.05rem; font-weight: 900; color: #a855f7; font-family: monospace; margin-top: 2px;">0</div>
+        </div>
+        <div style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 12px; padding: 9px 6px;">
+          <div style="font-size: 0.62rem; color: #6ee7b7; font-weight: 800;">SOL EARNED</div>
+          <div id="refStatSol" style="font-size: 1.05rem; font-weight: 900; color: #34d399; font-family: monospace; margin-top: 2px;">0.000 SOL</div>
+        </div>
+      </div>
+
+      <!-- Custom Referral Code Creator -->
+      <div style="background: rgba(0,0,0,0.35); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; margin-bottom: 6px;">
+          1. Claim Your Custom Referral Code
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <input id="inputCustomRefCode" type="text" maxlength="18" placeholder="e.g. kieran, alpha, solking..." style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 8px 11px; color: white; font-size: 0.82rem; font-weight: 700; outline: none;" />
+          <button id="btnSaveCustomRefCode" style="background: var(--primary-flame); border: none; color: white; font-size: 0.76rem; font-weight: 800; padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;">
+            Save Code
+          </button>
+        </div>
+        <div id="refWalletStatusHint" style="font-size: 0.68rem; color: var(--text-muted); margin-top: 6px;">
+          Connect your Solana wallet so 30% fee splits route straight to your address.
+        </div>
+      </div>
+
+      <!-- Shareable Referral Link Box -->
+      <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 14px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-size: 0.72rem; font-weight: 800; color: #6ee7b7; text-transform: uppercase; margin-bottom: 6px;">
+          2. Your Personal 30% Fee-Split Link
+        </div>
+        <div id="refShareUrlDisplay" style="background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.12); border-radius: 9px; padding: 8px 10px; font-family: monospace; font-size: 0.76rem; color: #f8fafc; word-break: break-all; margin-bottom: 10px;">
+          https://memetinder.fun/?ref=...
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button id="btnCopyRefLink" style="flex: 1; background: #10b981; border: none; color: #052e16; font-size: 0.8rem; font-weight: 900; padding: 10px; border-radius: 10px; cursor: pointer;">
+            📋 Copy Referral Link
+          </button>
+          <button id="btnShareRefX" style="background: rgba(29, 155, 240, 0.2); border: 1px solid rgba(29, 155, 240, 0.5); color: #7dd3fc; font-size: 0.8rem; font-weight: 800; padding: 10px 14px; border-radius: 10px; cursor: pointer;">
+            🐦 Share on X
+          </button>
+        </div>
+      </div>
+
+      <div id="activeReferredByBanner" style="display: none; font-size: 0.72rem; color: #cbd5e1; text-align: center; padding: 6px; border-radius: 8px; background: rgba(255,255,255,0.04);">
       </div>
     </div>
   </div>
