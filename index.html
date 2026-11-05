@@ -242,52 +242,63 @@
       <h2 style="font-family: var(--font-display); font-size: 1.45rem; font-weight: 800; margin-bottom: 4px;">
         🚀 Boost &amp; Feature Your Coin
       </h2>
-      <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px;">
-        Pin your Solana token to the top of the MemeTinder swipe deck for thousands of active degens.
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+        Boosts stack! Higher total Boost Power (🔥) ranks your token higher in our weighted priority rotation across all active swipers.
       </p>
 
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px;">
         <label style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase;">Token Contract Address (CA)</label>
         <input
           type="text"
           id="inputBoostCa"
           placeholder="Paste Pump.fun or Solana token CA..."
-          style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 13px; color: #f8fafc; font-family: monospace; font-size: 0.88rem; outline: none; width: 100%; box-sizing: border-box;"
+          style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px 13px; color: #f8fafc; font-family: monospace; font-size: 0.86rem; outline: none; width: 100%; box-sizing: border-box;"
         />
 
-        <label style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-top: 4px;">Select Boost Package</label>
+        <label style="font-size: 0.75rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin-top: 2px;">Select Stackable Boost Power</label>
         <div id="boostTierGroup" style="display: flex; flex-direction: column; gap: 8px;">
-          <button type="button" class="boost-tier-btn" data-tier-sol="0.15" data-tier-label="⚡ 12h Starter Boost" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px 14px; color: white; cursor: pointer; text-align: left;">
+          <button type="button" class="boost-tier-btn" data-tier-sol="0.15" data-tier-points="10" data-tier-hours="12" data-tier-label="⚡ 10x Boost" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 11px 14px; color: white; cursor: pointer; text-align: left;">
             <div>
-              <div style="font-weight: 800; font-size: 0.92rem;">⚡ Starter Boost (12 Hours)</div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">Top 5 Deck Priority + ⚡ BOOSTED Badge</div>
+              <div style="font-weight: 800; font-size: 0.9rem;">⚡ +10x Boost Power (12 Hours)</div>
+              <div style="font-size: 0.73rem; color: var(--text-muted);">Priority Deck Rotation + ⚡ 10x Boost Badge</div>
             </div>
             <span style="font-family: var(--font-display); font-weight: 900; color: #34d399; font-size: 1rem;">0.15 SOL</span>
           </button>
 
-          <button type="button" class="boost-tier-btn active" data-tier-sol="0.35" data-tier-label="🔥 24h Super Match" style="display: flex; justify-content: space-between; align-items: center; background: rgba(244, 63, 94, 0.16); border: 1.5px solid #f43f5e; border-radius: 14px; padding: 12px 14px; color: white; cursor: pointer; text-align: left;">
+          <button type="button" class="boost-tier-btn active" data-tier-sol="0.35" data-tier-points="30" data-tier-hours="24" data-tier-label="🔥 30x Super Boost" style="display: flex; justify-content: space-between; align-items: center; background: rgba(244, 63, 94, 0.16); border: 1.5px solid #f43f5e; border-radius: 14px; padding: 11px 14px; color: white; cursor: pointer; text-align: left;">
             <div>
-              <div style="font-weight: 800; font-size: 0.92rem;">🔥 Super Match (24 Hours) <span style="font-size: 0.68rem; background: #f43f5e; padding: 2px 6px; border-radius: 6px; margin-left: 4px;">POPULAR</span></div>
-              <div style="font-size: 0.75rem; color: #fda4af;">Top 3 Deck Priority + Golden Frame + 🔥 FEATURED</div>
+              <div style="font-weight: 800; font-size: 0.9rem;">🔥 +30x Super Boost (24 Hours) <span style="font-size: 0.66rem; background: #f43f5e; padding: 2px 6px; border-radius: 6px; margin-left: 4px;">POPULAR</span></div>
+              <div style="font-size: 0.73rem; color: #fda4af;">3x Higher Deck Weight + Golden Frame + 🔥 30x Badge</div>
             </div>
             <span style="font-family: var(--font-display); font-weight: 900; color: #34d399; font-size: 1rem;">0.35 SOL</span>
           </button>
 
-          <button type="button" class="boost-tier-btn" data-tier-sol="0.75" data-tier-label="👑 48h Whale Takeover" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 12px 14px; color: white; cursor: pointer; text-align: left;">
+          <button type="button" class="boost-tier-btn" data-tier-sol="0.75" data-tier-points="100" data-tier-hours="48" data-tier-label="👑 100x Hyper Boost" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid var(--border-subtle); border-radius: 14px; padding: 11px 14px; color: white; cursor: pointer; text-align: left;">
             <div>
-              <div style="font-weight: 800; font-size: 0.92rem;">👑 Whale Takeover (48 Hours)</div>
-              <div style="font-size: 0.75rem; color: var(--text-muted);">#1 First Card Slot + 👑 KING OF DECK Badge</div>
+              <div style="font-weight: 800; font-size: 0.9rem;">👑 +100x Hyper Boost (48 Hours)</div>
+              <div style="font-size: 0.73rem; color: var(--text-muted);">10x Maximum Deck Weight + 👑 King Boost Badge</div>
             </div>
             <span style="font-family: var(--font-display); font-weight: 900; color: #facc15; font-size: 1rem;">0.75 SOL</span>
           </button>
         </div>
       </div>
 
-      <div id="boostTxConfirmArea" style="display: none; margin-bottom: 12px;"></div>
+      <div id="boostTxConfirmArea" style="display: none; margin-bottom: 10px;"></div>
 
-      <button id="btnPayAndBoostCoin" style="width: 100%; background: linear-gradient(135deg, #f59e0b, #f43f5e); border: none; border-radius: 14px; padding: 14px; color: white; font-weight: 800; font-size: 0.98rem; cursor: pointer; box-shadow: 0 8px 20px rgba(244, 63, 94, 0.35);">
-        🚀 Pay 0.35 SOL &amp; Boost Token Now
+      <button id="btnPayAndBoostCoin" style="width: 100%; background: linear-gradient(135deg, #f59e0b, #f43f5e); border: none; border-radius: 14px; padding: 13px; color: white; font-weight: 800; font-size: 0.95rem; cursor: pointer; box-shadow: 0 8px 20px rgba(244, 63, 94, 0.35); margin-bottom: 12px;">
+        🚀 Pay 0.35 SOL (+30x Boost Power)
       </button>
+
+      <!-- Live Active Boost Leaderboard Queue -->
+      <div style="background: rgba(0,0,0,0.32); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 9px 11px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.68rem; font-weight: 800; color: #fde68a; text-transform: uppercase; margin-bottom: 6px;">
+          <span>🔥 Active Boost Queue (Ranked by Boost Power)</span>
+          <span>Stackable</span>
+        </div>
+        <div id="activeBoostsQueueList" style="display: flex; flex-direction: column; gap: 5px; font-size: 0.75rem; max-height: 110px; overflow-y: auto;">
+          <!-- Injected dynamically -->
+        </div>
+      </div>
     </div>
   </div>
 

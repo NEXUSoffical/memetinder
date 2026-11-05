@@ -1,30 +1,124 @@
 import { MemeCoin } from './types';
 import { FRESH_TRENDING_MEME_COINS, OFFICIAL_MEMETINDER_CA, OFFICIAL_MEMETINDER_COIN } from './coinsData';
 
+export interface BoostedEntry {
+  contractAddress: string;
+  coin: MemeCoin;
+  boostPoints: number;
+  expiresAt: number;
+}
+
 export class DexService {
   private static cachedCoins: MemeCoin[] = [...FRESH_TRENDING_MEME_COINS];
   private static lastFetchTime: number = 0;
   private static isFetching: boolean = false;
   private static readonly LAST_FIRST_KEY = 'memetinder_last_first_coin_v1';
   private static readonly SWIPED_IDS_KEY = 'memetinder_recent_swiped_v1';
-  private static readonly BOOSTED_COINS_KEY = 'memetinder_boosted_coins_v1';
+  private static readonly BOOSTED_COINS_KEY = 'memetinder_boosted_entries_v2';
 
-  public static saveBoostedCoin(coin: MemeCoin) {
+  public static saveBoostedCoin(coin: MemeCoin, boostPoints = 30, durationHours = 24, txHash = ''): number {
+    let totalPoints = boostPoints;
+    const now = Date.now();
     try {
-      const raw = localStorage.getItem(this.BOOSTED_COINS_KEY);
-      const list: MemeCoin[] = raw ? JSON.parse(raw) : [];
-      const updated = [coin, ...list.filter(c => c.contractAddress !== coin.contractAddress)].slice(0, 10);
+      const entries = this.getBoostedEntries();
+      const existing = entries.find(e => e.contractAddress === coin.contractAddress);
+      totalPoints = (existing ? existing.boostPoints : 0) + boostPoints;
+      const expiresAt = Math.max(
+        existing ? existing.expiresAt : 0,
+        now + durationHours * 3600 * 1000
+      );
+
+      coin.tagline = `🔥 Boosted ${totalPoints}x on MemeTinder • Priority Featured`;
+      coin.traits = [`🔥 ${totalPoints}x Boost Power`, '👑 Featured Gem', ...(coin.traits || []).slice(0, 1)];
+      coin.hypeScore = 100;
+      coin.verified = true;
+
+      const updated: BoostedEntry[] = [
+        { contractAddress: coin.contractAddress, coin, boostPoints: totalPoints, expiresAt },
+        ...entries.filter(e => e.contractAddress !== coin.contractAddress)
+      ].sort((a, b) => b.boostPoints - a.boostPoints).slice(0, 25);
+
       localStorage.setItem(this.BOOSTED_COINS_KEY, JSON.stringify(updated));
     } catch {}
+
+    if (txHash) {
+      fetch('/api/boosts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coin, boostPoints, durationHours, txHash })
+      }).catch(() => {});
+    }
+
+    return totalPoints;
   }
 
-  public static getBoostedCoins(): MemeCoin[] {
+  public static getBoostedEntries(): BoostedEntry[] {
+    const now = Date.now();
     try {
       const raw = localStorage.getItem(this.BOOSTED_COINS_KEY);
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const parsed: BoostedEntry[] = JSON.parse(raw);
+      return parsed
+        .filter(e => e && e.coin && (!e.expiresAt || e.expiresAt > now))
+        .sort((a, b) => b.boostPoints - a.boostPoints);
     } catch {
       return [];
     }
+  }
+
+  public static async syncServerBoosts(): Promise<BoostedEntry[]> {
+    try {
+      const res = await fetch('/api/boosts');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data?.boosts) && data.boosts.length > 0) {
+          const local = this.getBoostedEntries();
+          const map = new Map<string, BoostedEntry>();
+          for (const e of local) map.set(e.contractAddress, e);
+          for (const s of data.boosts) {
+            if (!s?.contractAddress || !s?.coin) continue;
+            const prev = map.get(s.contractAddress);
+            if (!prev || s.boostPoints >= prev.boostPoints) {
+              map.set(s.contractAddress, {
+                contractAddress: s.contractAddress,
+                coin: s.coin,
+                boostPoints: s.boostPoints || 30,
+                expiresAt: s.expiresAt || Date.now() + 86400000
+              });
+            }
+          }
+          const merged = Array.from(map.values()).sort((a, b) => b.boostPoints - a.boostPoints);
+          localStorage.setItem(this.BOOSTED_COINS_KEY, JSON.stringify(merged));
+          return merged;
+        }
+      }
+    } catch {}
+    return this.getBoostedEntries();
+  }
+
+  public static getBoostedCoins(): MemeCoin[] {
+    const entries = this.getBoostedEntries();
+    if (entries.length <= 1) return entries.map(e => e.coin);
+
+    // Weighted priority rotation: higher boostPoints have higher probability of winning top slots,
+    // while tied or multiple boosted coins rotate fairly across swipers!
+    const pool = [...entries];
+    const ordered: MemeCoin[] = [];
+    while (pool.length > 0) {
+      const totalWeight = pool.reduce((sum, item) => sum + Math.max(10, item.boostPoints), 0);
+      let roll = Math.random() * totalWeight;
+      let pickedIdx = 0;
+      for (let i = 0; i < pool.length; i++) {
+        roll -= Math.max(10, pool[i].boostPoints);
+        if (roll <= 0) {
+          pickedIdx = i;
+          break;
+        }
+      }
+      ordered.push(pool[pickedIdx].coin);
+      pool.splice(pickedIdx, 1);
+    }
+    return ordered;
   }
 
   /**
@@ -107,8 +201,9 @@ export class DexService {
     this.isFetching = true;
 
     try {
-      // 1. Fetch official top boosted, latest boosted, latest token profiles, and Official $MATCH pair in parallel
-      const [topBoostsRes, latestBoostsRes, profilesRes, officialRes] = await Promise.allSettled([
+      // 1. Sync active paid community boosts & fetch top boosted, latest boosted, profiles, and Official $MATCH pair in parallel
+      const [, topBoostsRes, latestBoostsRes, profilesRes, officialRes] = await Promise.allSettled([
+        this.syncServerBoosts(),
         fetch('https://api.dexscreener.com/token-boosts/top/v1'),
         fetch('https://api.dexscreener.com/token-boosts/latest/v1'),
         fetch('https://api.dexscreener.com/token-profiles/latest/v1'),

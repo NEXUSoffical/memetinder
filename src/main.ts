@@ -1542,16 +1542,66 @@ function bindActions() {
   const boostTierBtns = document.querySelectorAll('.boost-tier-btn');
   const btnPayAndBoostCoin = document.getElementById('btnPayAndBoostCoin') as HTMLButtonElement | null;
   const boostTxConfirmArea = document.getElementById('boostTxConfirmArea') as HTMLElement | null;
+  const activeBoostsQueueList = document.getElementById('activeBoostsQueueList') as HTMLElement | null;
 
   let selectedBoostSol = 0.35;
-  let selectedBoostLabel = '🔥 24h Super Match';
+  let selectedBoostPoints = 30;
+  let selectedBoostHours = 24;
+  let selectedBoostLabel = '🔥 +30x Super Boost';
 
-  function openBoostModal() {
+  function renderActiveBoostsQueue() {
+    if (!activeBoostsQueueList) return;
+    const entries = DexService.getBoostedEntries();
+    const now = Date.now();
+
+    const officialRow = `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:9px; background:rgba(244,63,94,0.12); border:1px solid rgba(244,63,94,0.35);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:0.74rem; font-weight:900; color:#fbbf24;">📌 PINNED</span>
+          <span style="font-size:0.8rem; font-weight:800; color:#fff;">$${escapeHtml(OFFICIAL_MEMETINDER_COIN.symbol)}</span>
+          <span style="font-size:0.7rem; color:#fda4af;">Official Platform Token</span>
+        </div>
+        <span style="font-size:0.72rem; font-weight:800; color:#fbbf24;">👑 Always #1</span>
+      </div>
+    `;
+
+    if (entries.length === 0) {
+      activeBoostsQueueList.innerHTML = `
+        ${officialRow}
+        <div style="font-size:0.73rem; color:var(--text-muted); text-align:center; padding:8px 4px;">
+          No community boosts active right now — boost a token above to claim #1 Boost Power priority!
+        </div>
+      `;
+      return;
+    }
+
+    const rowsHtml = entries.map((entry, idx) => {
+      const hoursLeft = Math.max(1, Math.ceil((entry.expiresAt - now) / (1000 * 60 * 60)));
+      const rankBadge = idx === 0 ? '🥇 #1 Power' : idx === 1 ? '🥈 #2 Power' : idx === 2 ? '🥉 #3 Power' : `#${idx + 1}`;
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:9px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.73rem; font-weight:800; color:#fbbf24;">${rankBadge}</span>
+            <span style="font-size:0.8rem; font-weight:800; color:#fff;">$${escapeHtml(entry.coin.symbol)}</span>
+            <span style="font-size:0.68rem; color:var(--text-muted);">${hoursLeft}h left</span>
+          </div>
+          <span style="font-size:0.75rem; font-weight:800; color:#f43f5e;">🔥 ${entry.boostPoints}x Power</span>
+        </div>
+      `;
+    }).join('');
+
+    activeBoostsQueueList.innerHTML = officialRow + rowsHtml;
+  }
+
+  async function openBoostModal() {
     if (!boostModalBackdrop) return;
     if (boostTxConfirmArea) boostTxConfirmArea.style.display = 'none';
+    renderActiveBoostsQueue();
     document.body.classList.add('modal-active');
     boostModalBackdrop.classList.add('active');
     setTimeout(() => inputBoostCa?.focus(), 100);
+    await DexService.syncServerBoosts();
+    renderActiveBoostsQueue();
   }
 
   function closeBoostModal() {
@@ -1580,9 +1630,11 @@ function bindActions() {
       (btn as HTMLElement).style.border = '1.5px solid #f43f5e';
 
       selectedBoostSol = parseFloat(btn.getAttribute('data-tier-sol') || '0.35');
-      selectedBoostLabel = btn.getAttribute('data-tier-label') || '🔥 24h Super Match';
+      selectedBoostPoints = parseInt(btn.getAttribute('data-tier-points') || '30', 10);
+      selectedBoostHours = parseInt(btn.getAttribute('data-tier-hours') || '24', 10);
+      selectedBoostLabel = btn.getAttribute('data-tier-label') || '🔥 +30x Super Boost';
       if (btnPayAndBoostCoin) {
-        btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Boost Token Now`;
+        btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Add +${selectedBoostPoints}x Boost`;
       }
     });
   });
@@ -1610,7 +1662,7 @@ function bindActions() {
       const coin = await DexService.fetchTokenByAddress(ca);
       if (!coin) {
         btnPayAndBoostCoin.disabled = false;
-        btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Boost Token Now`;
+        btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Add +${selectedBoostPoints}x Boost`;
         showToast('Could not find token on DexScreener. Please check the CA!');
         return;
       }
@@ -1619,17 +1671,20 @@ function bindActions() {
       const payRes = await JupiterService.executeBoostPayment(selectedBoostSol);
 
       btnPayAndBoostCoin.disabled = false;
-      btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Boost Token Now`;
+      btnPayAndBoostCoin.innerText = `🚀 Pay ${selectedBoostSol} SOL & Add +${selectedBoostPoints}x Boost`;
 
       if (payRes.success && payRes.txHash) {
         sound.playBuy();
-        coin.tagline = `${selectedBoostLabel} • Featured on MemeTinder`;
-        coin.traits = [selectedBoostLabel, '👑 Sponsored Gem', ...coin.traits.slice(0, 1)];
-        coin.hypeScore = 100;
-        coin.verified = true;
+        const totalPoints = DexService.saveBoostedCoin(coin, selectedBoostPoints, selectedBoostHours, payRes.txHash);
+        renderActiveBoostsQueue();
 
-        DexService.saveBoostedCoin(coin);
-        allCoins = [coin, ...allCoins.filter(c => c.contractAddress !== coin.contractAddress)];
+        const boostedDeck = DexService.getBoostedCoins();
+        const boostedIds = new Set(boostedDeck.map(c => c.contractAddress));
+        allCoins = [
+          OFFICIAL_MEMETINDER_COIN,
+          ...boostedDeck.filter(c => c.contractAddress !== OFFICIAL_MEMETINDER_CA),
+          ...allCoins.filter(c => c.contractAddress !== OFFICIAL_MEMETINDER_CA && !boostedIds.has(c.contractAddress))
+        ];
         if (swipeEngine) {
           swipeEngine.setCoins(getFilteredCoins());
         }
@@ -1638,14 +1693,14 @@ function bindActions() {
           boostTxConfirmArea.style.display = 'block';
           boostTxConfirmArea.innerHTML = `
             <div class="tx-confirmation-banner">
-              <span style="font-weight: 800; color: #10b981;">🎉 $${escapeHtml(coin.symbol)} is now BOOSTED to #1 on the Deck!</span>
+              <span style="font-weight: 800; color: #10b981;">🎉 $${escapeHtml(coin.symbol)} now has 🔥 ${totalPoints}x Boost Power in the Top Priority Queue!</span>
               <a class="tx-solscan-link" href="${payRes.solscanUrl}" target="_blank" rel="noopener">
                 View Boost Payment on Solscan ↗
               </a>
             </div>
           `;
         }
-        showToast(`👑 $${coin.symbol} is now Boosted & Featured at the top of the deck!`);
+        showToast(`🔥 $${coin.symbol} boosted to ${totalPoints}x Power in the Priority Deck!`);
       } else {
         showToast(`⚠️ ${payRes.message}`, 4000);
       }
